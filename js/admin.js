@@ -408,12 +408,14 @@ async function uploadPdfs(e) {
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-      // Step 2: Determine display name (manual input → PDF metadata → filename)
+      // Step 2: Determine display name (manual input → PDF metadata → first-page text → filename)
       let displayName;
       if (files.length === 1 && nameInput.value.trim()) {
         displayName = nameInput.value.trim() + '.pdf';
       } else {
         displayName = file.name; // default fallback
+
+        // Try PDF metadata title first
         try {
           const meta  = await pdfDoc.getMetadata();
           const title = meta.info?.Title?.trim();
@@ -421,6 +423,23 @@ async function uploadPdfs(e) {
             displayName = title.replace(/[<>:"/\\|?*\r\n]+/g, '').trim().slice(0, 80) + '.pdf';
           }
         } catch { /* non-fatal */ }
+
+        // If still the original filename, derive a name from first-page text
+        if (displayName === file.name) {
+          try {
+            const firstPage = await pdfDoc.getPage(1);
+            const content   = await firstPage.getTextContent();
+            const raw       = content.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+            // Take first meaningful line (up to 80 chars), strip junk chars
+            const firstLine = raw.split(/[\r\n]+/)[0]
+              .replace(/[<>:"/\\|?*]+/g, '')
+              .trim()
+              .slice(0, 80);
+            if (firstLine.length > 4 && !/^\d+$/.test(firstLine)) {
+              displayName = firstLine + '.pdf';
+            }
+          } catch { /* non-fatal */ }
+        }
       }
 
       // Step 3: Upload to storage with smart name

@@ -41,6 +41,31 @@ Deno.serve(async (req) => {
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
+  // Auto-generate a descriptive name FIRST (before embedding — avoids timeout)
+  let suggested_name: string | null = null;
+  try {
+    const sample = chunks.slice(0, 3).map(c => c.content).join('\n').slice(0, 800);
+    const nameRes = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('CEREBRAS_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-oss-120b',
+        max_tokens: 20,
+        messages: [
+          { role: 'system', content: 'You generate short document titles. Respond with ONLY a title, 2-6 words, no punctuation, no explanation.' },
+          { role: 'user', content: `Document content:\n${sample}\n\nTitle:` }
+        ],
+      }),
+    });
+    if (nameRes.ok) {
+      const nameData = await nameRes.json();
+      suggested_name = nameData.choices?.[0]?.message?.content?.trim() || null;
+    }
+  } catch { /* non-fatal */ }
+
   const VOYAGE_API_KEY = Deno.env.get('VOYAGE_API_KEY')!;
   const BATCH_SIZE = 100;
 
@@ -97,31 +122,6 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: insertError.message }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
-
-  // Auto-generate a descriptive name from the first chunk
-  let suggested_name: string | null = null;
-  try {
-    const sample = chunks.slice(0, 3).map(c => c.content).join('\n').slice(0, 800);
-    const nameRes = await fetch('https://api.cerebras.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('CEREBRAS_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-oss-120b',
-        max_tokens: 20,
-        messages: [
-          { role: 'system', content: 'You generate short document titles. Respond with ONLY a title, 2-6 words, no punctuation, no explanation.' },
-          { role: 'user', content: `Document content:\n${sample}\n\nTitle:` }
-        ],
-      }),
-    });
-    if (nameRes.ok) {
-      const nameData = await nameRes.json();
-      suggested_name = nameData.choices?.[0]?.message?.content?.trim() || null;
-    }
-  } catch { /* non-fatal */ }
 
   return new Response(
     JSON.stringify({ ok: true, chunks_indexed: rows.length, suggested_name }),
