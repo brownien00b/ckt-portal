@@ -253,6 +253,9 @@ function renderRagDocList(chunks) {
         <button onclick="renameRagDoc('${esc(file)}')"
                 style="background:none;border:1px solid var(--border);color:var(--muted);
                        padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">Rename</button>
+        <button onclick="deleteRagDoc('${esc(file)}')"
+                style="background:none;border:1px solid #c0392b;color:#e74c3c;
+                       padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">Delete</button>
       </div>
     </div>`).join('');
 }
@@ -267,6 +270,21 @@ window.renameRagDoc = async function(oldName) {
     .eq('project_id', projectId)
     .eq('filename', oldName);
   if (error) { alert('Rename failed: ' + error.message); return; }
+  // Move file in storage so PDF viewer stays in sync
+  await db.storage.from('project-documents')
+    .move(`${projectId}/${oldName}`, `${projectId}/${finalName}`);
+  await loadRagDocs(projectId);
+};
+
+window.deleteRagDoc = async function(filename) {
+  if (!confirm(`Delete "${filename}" and remove all its indexed content?`)) return;
+  const projectId = document.getElementById('pdf-upload-area').dataset.projectId;
+  const { error } = await db.from('document_chunks')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('filename', filename);
+  if (error) { alert('Delete failed: ' + error.message); return; }
+  await db.storage.from('project-documents').remove([`${projectId}/${filename}`]);
   await loadRagDocs(projectId);
 };
 
@@ -390,7 +408,7 @@ async function uploadPdfs(e) {
       ? `[${i + 1}/${files.length}] Uploading ${file.name}…`
       : 'Uploading to storage…';
 
-    const storagePath = `${projectId}/${file.name}`;
+    const storagePath = `${projectId}/${displayName}`;
     const { error: storageError } = await db.storage
       .from('project-documents')
       .upload(storagePath, file, { upsert: true });
