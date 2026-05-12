@@ -297,8 +297,15 @@ window.openPdf = async function(filename, page) {
   panel.classList.add('open');
   resizeH.style.display = 'block';
   ragMain.style.flex    = 'none';
-  ragMain.style.width   = '40%';
-  panel.style.width     = '60%';
+  ragMain.style.width   = '30%';
+  panel.style.width     = '70%';
+  // Auto-collapse docs sidebar to give PDF max room
+  const sidebar = document.getElementById('docs-sidebar');
+  const sideBtn = document.getElementById('sidebar-toggle');
+  if (sidebar && !sidebar.classList.contains('collapsed')) {
+    sidebar.classList.add('collapsed');
+    if (sideBtn) { sideBtn.textContent = '☰'; sideBtn.title = 'Show sidebar'; }
+  }
 
   if (currentFile !== filename) {
     currentFile = filename;
@@ -429,6 +436,13 @@ window.closePdf = function() {
   resizeH.style.display = 'none';
   ragMain.style.flex = '1';
   ragMain.style.width = 'auto';
+  // Restore docs sidebar
+  const sidebar = document.getElementById('docs-sidebar');
+  const sideBtn = document.getElementById('sidebar-toggle');
+  if (sidebar && sidebar.classList.contains('collapsed')) {
+    sidebar.classList.remove('collapsed');
+    if (sideBtn) { sideBtn.textContent = '✕'; sideBtn.title = 'Hide sidebar'; }
+  }
   currentFile = null; pdfDoc = null;
   pageTextContent = {}; pageTextDivs = {};
   findMatches = []; findCurrent = -1;
