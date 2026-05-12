@@ -25,12 +25,17 @@ async function init() {
 }
 
 function renderProject(project) {
+  const VALID_STATUSES = ['active', 'complete', 'pending'];
+  const safeStatus = VALID_STATUSES.includes(project.status.toLowerCase())
+    ? project.status.toLowerCase()
+    : 'pending';
+
   const content = document.getElementById('project-content');
   content.innerHTML = `
     <div class="title-block">
       <h1>${escHtml(project.name)}</h1>
       <p class="client-name">${escHtml(project.client_name || '')}</p>
-      <span class="status-badge status-${project.status.toLowerCase()}">${escHtml(project.status)}</span>
+      <span class="status-badge status-${safeStatus}">${escHtml(project.status)}</span>
     </div>
 
     <div class="milestone-section">
@@ -47,7 +52,7 @@ function renderProject(project) {
   `;
 
   renderMilestones(project.milestone_labels, project.current_milestone);
-  renderDocuments(project.project_documents, project.id);
+  renderDocuments(project.project_documents);
 }
 
 function renderMilestones(labels, current) {
@@ -71,7 +76,7 @@ function renderMilestones(labels, current) {
   el.innerHTML = items.join('');
 }
 
-function renderDocuments(docs, projectId) {
+function renderDocuments(docs) {
   const el = document.getElementById('documents-grid');
   if (!docs || !docs.length) {
     el.innerHTML = '<p class="text-muted">No documents added yet.</p>';
@@ -79,7 +84,7 @@ function renderDocuments(docs, projectId) {
   }
   const sorted = [...docs].sort((a, b) => a.display_order - b.display_order);
   el.innerHTML = sorted.map(doc => {
-    if (doc.drive_url) {
+    if (doc.drive_url && isSafeUrl(doc.drive_url)) {
       return `
         <div class="doc-card">
           <span class="doc-label">${escHtml(doc.label)}</span>
@@ -108,6 +113,13 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function isSafeUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch { return false; }
 }
 
 init();
