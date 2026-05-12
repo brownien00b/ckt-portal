@@ -1,8 +1,12 @@
-import { db, requireAuth } from '/js/supabase-client.js';
+import { db, requireAuth, ADMIN_EMAIL } from '/js/supabase-client.js';
 
 async function init() {
   const session = await requireAuth();
   if (!session) return;
+
+  if (session.user.email === ADMIN_EMAIL) {
+    document.getElementById('admin-nav').style.removeProperty('display');
+  }
 
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get('id');
