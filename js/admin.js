@@ -400,33 +400,42 @@ async function uploadPdfs(e) {
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
-    const displayName = files.length === 1 && nameInput.value.trim()
-      ? nameInput.value.trim() + '.pdf'
-      : file.name;
-
-    progress.textContent = files.length > 1
-      ? `[${i + 1}/${files.length}] Uploading ${file.name}…`
-      : 'Uploading to storage…';
-
-    const storagePath = `${projectId}/${displayName}`;
-    const { error: storageError } = await db.storage
-      .from('project-documents')
-      .upload(storagePath, file, { upsert: true });
-
-    if (storageError) {
-      progress.textContent = `❌ Upload failed (${file.name}): ` + storageError.message;
-      return;
-    }
+    const label = (n) => files.length > 1 ? `[${i + 1}/${files.length}] ${n}` : n;
 
     try {
-      progress.textContent = files.length > 1
-        ? `[${i + 1}/${files.length}] Parsing ${file.name}…`
-        : 'Parsing PDF…';
-
+      // Step 1: Parse PDF first so we can extract a smart display name
+      progress.textContent = label(`Reading ${file.name}…`);
       const arrayBuffer = await file.arrayBuffer();
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-      const pdfDoc = await loadingTask.promise;
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
+      // Step 2: Determine display name (manual input → PDF metadata → filename)
+      let displayName;
+      if (files.length === 1 && nameInput.value.trim()) {
+        displayName = nameInput.value.trim() + '.pdf';
+      } else {
+        displayName = file.name; // default fallback
+        try {
+          const meta  = await pdfDoc.getMetadata();
+          const title = meta.info?.Title?.trim();
+          if (title && title.length > 3 && title.length < 120 && !/^\d+$/.test(title)) {
+            displayName = title.replace(/[<>:"/\\|?*\r\n]+/g, '').trim().slice(0, 80) + '.pdf';
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      // Step 3: Upload to storage with smart name
+      progress.textContent = label(`Uploading "${displayName}"…`);
+      const storagePath = `${projectId}/${displayName}`;
+      const { error: storageError } = await db.storage
+        .from('project-documents')
+        .upload(storagePath, file, { upsert: true });
+      if (storageError) {
+        progress.textContent = `❌ Upload failed (${file.name}): ` + storageError.message;
+        return;
+      }
+
+      // Step 4: Extract text chunks
+      progress.textContent = label(`Parsing ${pdfDoc.numPages} pages…`);
       const chunks = [];
       for (let p = 1; p <= pdfDoc.numPages; p++) {
         const page    = await pdfDoc.getPage(p);
@@ -435,47 +444,34 @@ async function uploadPdfs(e) {
         if (text) chunks.push({ page_num: p, content: text });
       }
 
-      progress.textContent = files.length > 1
-        ? `[${i + 1}/${files.length}] Indexing ${chunks.length} pages…`
-        : `Indexing ${chunks.length} pages…`;
-
+      // Step 5: Index (edge function also tries Cerebras naming as optional upgrade)
+      progress.textContent = label(`Indexing ${chunks.length} chunks…`);
       const res = await fetch(
         'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
           body: JSON.stringify({ project_id: projectId, filename: displayName, chunks })
         }
       );
-
       if (!res.ok) {
         const err = await res.text();
         progress.textContent = `❌ Indexing failed (${file.name}): ` + err;
         return;
       }
 
-      // Auto-rename using AI suggested name if available
+      // Step 6: If edge function returns a better AI name, upgrade
       try {
         const resData = await res.json();
         if (resData.suggested_name) {
-          const raw    = resData.suggested_name.trim();
-          const aiName = raw.replace(/\.pdf$/i, '') + '.pdf';
-          progress.textContent = files.length > 1
-            ? `[${i + 1}/${files.length}] Naming → "${raw}"…`
-            : `Naming → "${raw}"…`;
-          // Update chunks
-          await db.from('document_chunks')
-            .update({ filename: aiName })
-            .eq('project_id', projectId)
-            .eq('filename', displayName);
-          // Also rename the storage object so downloads stay in sync
+          const aiName = resData.suggested_name.trim().replace(/\.pdf$/i, '') + '.pdf';
           if (aiName !== displayName) {
+            progress.textContent = label(`Naming → "${resData.suggested_name.trim()}"…`);
+            await db.from('document_chunks').update({ filename: aiName })
+              .eq('project_id', projectId).eq('filename', displayName);
             await db.storage.from('project-documents')
               .move(`${projectId}/${displayName}`, `${projectId}/${aiName}`)
-              .catch(() => {/* non-fatal if file already renamed */});
+              .catch(() => {});
           }
         }
       } catch { /* non-fatal */ }
