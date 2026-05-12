@@ -14,7 +14,7 @@ export const ADMIN_EMAIL = 'arpanmajmundar@gmail.com';
 export async function requireAuth(redirectTo = '/login.html') {
   const { data: { session } } = await db.auth.getSession();
   if (!session) {
-    const next = encodeURIComponent(window.location.href);
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
     window.location.href = `${redirectTo}?next=${next}`;
     return null;
   }
