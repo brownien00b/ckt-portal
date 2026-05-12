@@ -44,14 +44,14 @@ function renderProject(project, ragFilenames = []) {
 
   const content = document.getElementById('project-content');
   content.innerHTML = `
-    <div class="title-block">
-      <h1>${escHtml(project.name)}</h1>
-      <p class="client-name">${escHtml(project.client_name || '')}</p>
-      <span class="status-badge status-${safeStatus}">${escHtml(project.status)}</span>
-    </div>
-
-    <div class="milestone-section">
-      <div class="section-title">Project Milestones</div>
+    <div class="project-header-row">
+      <div class="title-block">
+        <h1>${escHtml(project.name)}</h1>
+        <div class="title-meta">
+          <p class="client-name">${escHtml(project.client_name || '')}</p>
+          <span class="status-badge status-${safeStatus}">${escHtml(project.status)}</span>
+        </div>
+      </div>
       <div class="milestone-tracker" id="milestone-tracker"></div>
     </div>
 
@@ -60,7 +60,7 @@ function renderProject(project, ragFilenames = []) {
         <div class="sidebar-header">
           <span class="section-title" style="margin:0;border:none;padding:0">Documents</span>
           <button class="btn-sidebar-toggle" id="sidebar-toggle"
-                  onclick="toggleDocsSidebar()" title="Hide sidebar">◀</button>
+                  onclick="toggleDocsSidebar()" title="Hide sidebar">☰</button>
         </div>
         <div class="documents-grid" id="documents-grid"></div>
       </div>
@@ -78,7 +78,7 @@ window.toggleDocsSidebar = function() {
   const btn     = document.getElementById('sidebar-toggle');
   if (!sidebar) return;
   const collapsed = sidebar.classList.toggle('collapsed');
-  btn.textContent = collapsed ? '▶' : '◀';
+  btn.textContent = collapsed ? '☰' : '✕';
   btn.title       = collapsed ? 'Show sidebar' : 'Hide sidebar';
 };
 
