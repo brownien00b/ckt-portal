@@ -410,19 +410,23 @@ async function uploadPdfs(e) {
 
       // Step 2: Determine display name (manual input → PDF metadata → first-page text → filename)
       let displayName;
+      let nameSource = 'original filename';
       if (files.length === 1 && nameInput.value.trim()) {
         displayName = nameInput.value.trim() + '.pdf';
+        nameSource  = 'manual input';
       } else {
-        displayName = file.name; // default fallback
+        displayName = file.name;
 
         // Try PDF metadata title first
         try {
           const meta  = await pdfDoc.getMetadata();
           const title = meta.info?.Title?.trim();
+          console.log('[naming] PDF metadata title:', title);
           if (title && title.length > 3 && title.length < 120 && !/^\d+$/.test(title)) {
             displayName = title.replace(/[<>:"/\\|?*\r\n]+/g, '').trim().slice(0, 80) + '.pdf';
+            nameSource  = 'PDF metadata';
           }
-        } catch { /* non-fatal */ }
+        } catch (e) { console.warn('[naming] metadata error:', e); }
 
         // If still the original filename, derive a name from first-page text
         if (displayName === file.name) {
@@ -430,20 +434,19 @@ async function uploadPdfs(e) {
             const firstPage = await pdfDoc.getPage(1);
             const content   = await firstPage.getTextContent();
             const raw       = content.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
-            // Take first meaningful line (up to 80 chars), strip junk chars
-            const firstLine = raw.split(/[\r\n]+/)[0]
-              .replace(/[<>:"/\\|?*]+/g, '')
-              .trim()
-              .slice(0, 80);
-            if (firstLine.length > 4 && !/^\d+$/.test(firstLine)) {
-              displayName = firstLine + '.pdf';
+            console.log('[naming] first-page text (first 200):', raw.slice(0, 200));
+            // Take first 80 chars of the text blob, clean up, use as title
+            const candidate = raw.replace(/[<>:"/\\|?*]+/g, '').trim().slice(0, 80);
+            if (candidate.length > 4 && !/^\d+$/.test(candidate)) {
+              displayName = candidate + '.pdf';
+              nameSource  = 'first-page text';
             }
-          } catch { /* non-fatal */ }
+          } catch (e) { console.warn('[naming] first-page error:', e); }
         }
       }
 
-      // Step 3: Upload to storage with smart name
-      progress.textContent = label(`Uploading "${displayName}"…`);
+      console.log(`[naming] source="${nameSource}" name="${displayName}"`);
+      progress.textContent = label(`Uploading "${displayName}"… (name from ${nameSource})`);
       const storagePath = `${projectId}/${displayName}`;
       const { error: storageError } = await db.storage
         .from('project-documents')
