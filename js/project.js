@@ -189,7 +189,7 @@ window.ragSubmit = async function() {
       return;
     }
     const res = await fetch(
-      'https://rlqeswhukjwfcaokkonj.supabase.co/functions/v1/query',
+      'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/query',
       {
         method: 'POST',
         headers: {

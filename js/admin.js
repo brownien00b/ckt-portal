@@ -378,7 +378,7 @@ async function uploadPdf(e) {
     const { data: { session } } = await db.auth.getSession();
     if (!session) { progress.textContent = '❌ Session expired — please reload.'; return; }
     const res = await fetch(
-      'https://rlqeswhukjwfcaokkonj.supabase.co/functions/v1/index-document',
+      'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
       {
         method: 'POST',
         headers: {
