@@ -735,6 +735,7 @@ body {
   background: #fff; position: relative; line-height: 0;
 }
 .pdf-page-wrap canvas { display: block; }
+.pdf-page-placeholder { background: #e8e8e8; opacity: 0.5; }
 .text-layer {
   position: absolute; top: 0; left: 0;
   overflow: hidden; pointer-events: none; line-height: 1;

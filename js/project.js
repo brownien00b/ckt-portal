@@ -351,17 +351,31 @@ async function renderAllPages(targetPage) {
   const wrap   = document.getElementById('pdf-canvas-wrap');
   const availW = wrap.clientWidth - 32;
 
+  // Use page 1 dimensions to pre-create all placeholder wrappers so scroll
+  // positions are correct before any page renders
+  const page1     = await pdfDoc.getPage(1);
+  const base1     = Math.min(availW / page1.getViewport({ scale: 1 }).width, 2.0);
+  const vp1       = page1.getViewport({ scale: base1 * userZoom });
+  for (let n = 1; n <= totalPages; n++) {
+    const ph = document.createElement('div');
+    ph.className = 'pdf-page-wrap pdf-page-placeholder';
+    ph.id = `pdf-page-${n}`;
+    ph.style.width  = vp1.width + 'px';
+    ph.style.height = vp1.height + 'px';
+    container.appendChild(ph);
+  }
+
   const renderPage = async (n) => {
     const pageObj   = await pdfDoc.getPage(n);
     const baseScale = Math.min(availW / pageObj.getViewport({ scale: 1 }).width, 2.0);
     const viewport  = pageObj.getViewport({ scale: baseScale * userZoom });
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'pdf-page-wrap';
-    wrapper.id = `pdf-page-${n}`;
+    const wrapper = document.getElementById(`pdf-page-${n}`);
+    if (!wrapper) return;
+    wrapper.classList.remove('pdf-page-placeholder');
+    wrapper.innerHTML = '';
     wrapper.style.width  = viewport.width + 'px';
     wrapper.style.height = viewport.height + 'px';
-    container.appendChild(wrapper);
 
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
@@ -395,12 +409,16 @@ async function renderAllPages(targetPage) {
 
   const target = Math.max(1, Math.min(targetPage || 1, totalPages));
 
-  // Render pages 1→target in order first so target lands at the correct scroll position
-  for (let n = 1; n <= target; n++) await renderPage(n);
+  // Render target page first, scroll immediately — no page 1 flash
+  await renderPage(target);
   scrollToPage(target);
 
-  // Render remaining pages in background
-  for (let n = target + 1; n <= totalPages; n++) await renderPage(n);
+  // Fill in all other pages lazily without blocking
+  (async () => {
+    for (let n = 1; n <= totalPages; n++) {
+      if (n !== target) await renderPage(n);
+    }
+  })();
 }
 
 function scrollToPage(num) {
