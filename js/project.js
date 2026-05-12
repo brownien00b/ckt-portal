@@ -344,25 +344,17 @@ async function renderAllPages(targetPage) {
   const wrap   = document.getElementById('pdf-canvas-wrap');
   const availW = wrap.clientWidth - 32;
 
-  // Pre-create all page wrappers so scrollToPage works immediately
-  for (let n = 1; n <= totalPages; n++) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'pdf-page-wrap';
-    wrapper.id = `pdf-page-${n}`;
-    wrapper.dataset.pending = '1';
-    container.appendChild(wrapper);
-  }
-
-  // Render target page first so citation link lands on the right page instantly
   const renderPage = async (n) => {
     const pageObj   = await pdfDoc.getPage(n);
     const baseScale = Math.min(availW / pageObj.getViewport({ scale: 1 }).width, 2.0);
     const viewport  = pageObj.getViewport({ scale: baseScale * userZoom });
-    const wrapper   = document.getElementById(`pdf-page-${n}`);
-    if (!wrapper) return;
-    delete wrapper.dataset.pending;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pdf-page-wrap';
+    wrapper.id = `pdf-page-${n}`;
     wrapper.style.width  = viewport.width + 'px';
     wrapper.style.height = viewport.height + 'px';
+    container.appendChild(wrapper);
 
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
@@ -395,13 +387,13 @@ async function renderAllPages(targetPage) {
   };
 
   const target = Math.max(1, Math.min(targetPage || 1, totalPages));
-  await renderPage(target);
+
+  // Render pages 1→target in order first so target lands at the correct scroll position
+  for (let n = 1; n <= target; n++) await renderPage(n);
   scrollToPage(target);
 
-  // Render all other pages in background
-  const others = [];
-  for (let n = 1; n <= totalPages; n++) if (n !== target) others.push(n);
-  for (const n of others) await renderPage(n);
+  // Render remaining pages in background
+  for (let n = target + 1; n <= totalPages; n++) await renderPage(n);
 }
 
 function scrollToPage(num) {
