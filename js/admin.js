@@ -332,75 +332,107 @@ window.deleteProject = async function() {
 
 // ── PDF upload (for RAG) ──────────────────────────────────────
 
-// ES module scripts are deferred — DOM is ready, attach directly
-document.getElementById('pdf-file-input')?.addEventListener('change', uploadPdf);
+document.getElementById('pdf-file-input')?.addEventListener('change', e => {
+  const files = e.target.files;
+  if (!files?.length) return;
+  const nameInput = document.getElementById('pdf-display-name');
+  if (files.length === 1) {
+    if (!nameInput.value.trim()) {
+      nameInput.value = files[0].name.replace(/\.pdf$/i, '');
+    }
+    nameInput.disabled = false;
+  } else {
+    nameInput.value = `${files.length} files selected — names auto-filled from filenames`;
+    nameInput.disabled = true;
+  }
+});
 
-async function uploadPdf(e) {
-  const file = e.target.files?.[0];
-  if (!file || !file.name.endsWith('.pdf') || file.type !== 'application/pdf') return;
+document.getElementById('pdf-file-input')?.addEventListener('change', uploadPdfs);
+
+async function uploadPdfs(e) {
+  const files = Array.from(e.target.files || []).filter(f => f.name.endsWith('.pdf') && f.type === 'application/pdf');
+  if (!files.length) return;
   const projectId = document.getElementById('pdf-upload-area').dataset.projectId;
   if (!projectId) { alert('Save the project first before uploading PDFs.'); return; }
 
   const progress = document.getElementById('upload-progress');
+  const nameInput = document.getElementById('pdf-display-name');
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { progress.textContent = '❌ Session expired — please reload.'; return; }
+
   progress.classList.remove('hidden');
-  progress.textContent = 'Uploading to storage…';
 
-  // 1. Upload to Supabase Storage
-  const storagePath = `${projectId}/${file.name}`;
-  const { error: storageError } = await db.storage
-    .from('project-documents')
-    .upload(storagePath, file, { upsert: true });
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const displayName = files.length === 1 && nameInput.value.trim()
+      ? nameInput.value.trim() + '.pdf'
+      : file.name;
 
-  if (storageError) {
-    progress.textContent = '❌ Upload failed: ' + storageError.message;
-    return;
-  }
+    progress.textContent = files.length > 1
+      ? `[${i + 1}/${files.length}] Uploading ${file.name}…`
+      : 'Uploading to storage…';
 
-  try {
-    progress.textContent = 'Parsing PDF…';
+    const storagePath = `${projectId}/${file.name}`;
+    const { error: storageError } = await db.storage
+      .from('project-documents')
+      .upload(storagePath, file, { upsert: true });
 
-    // 2. Parse PDF in browser using PDF.js, send chunks to edge function
-    const arrayBuffer = await file.arrayBuffer();
-    const loadingTask  = pdfjsLib.getDocument({ data: arrayBuffer });
-    const pdfDoc       = await loadingTask.promise;
-
-    const chunks = [];
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-      const page    = await pdfDoc.getPage(i);
-      const content = await page.getTextContent();
-      const text    = content.items.map(item => item.str).join(' ').trim().slice(0, 2000);
-      if (text) chunks.push({ page_num: i, content: text });
-    }
-
-    progress.textContent = `Indexing ${chunks.length} pages…`;
-
-    // 3. Send chunks to edge function
-    const { data: { session } } = await db.auth.getSession();
-    if (!session) { progress.textContent = '❌ Session expired — please reload.'; return; }
-    const res = await fetch(
-      'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ project_id: projectId, filename: file.name, chunks })
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.text();
-      progress.textContent = '❌ Indexing failed: ' + err;
+    if (storageError) {
+      progress.textContent = `❌ Upload failed (${file.name}): ` + storageError.message;
       return;
     }
 
-    progress.textContent = `✅ Indexed ${chunks.length} chunks`;
-    e.target.value = '';
-    await loadRagDocs(projectId);
-  } catch (err) {
-    progress.textContent = '❌ Error: ' + err.message;
+    try {
+      progress.textContent = files.length > 1
+        ? `[${i + 1}/${files.length}] Parsing ${file.name}…`
+        : 'Parsing PDF…';
+
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdfDoc = await loadingTask.promise;
+
+      const chunks = [];
+      for (let p = 1; p <= pdfDoc.numPages; p++) {
+        const page    = await pdfDoc.getPage(p);
+        const content = await page.getTextContent();
+        const text    = content.items.map(item => item.str).join(' ').trim().slice(0, 2000);
+        if (text) chunks.push({ page_num: p, content: text });
+      }
+
+      progress.textContent = files.length > 1
+        ? `[${i + 1}/${files.length}] Indexing ${chunks.length} pages…`
+        : `Indexing ${chunks.length} pages…`;
+
+      const res = await fetch(
+        'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ project_id: projectId, filename: displayName, chunks })
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.text();
+        progress.textContent = `❌ Indexing failed (${file.name}): ` + err;
+        return;
+      }
+    } catch (err) {
+      progress.textContent = `❌ Error (${file.name}): ` + err.message;
+      return;
+    }
   }
+
+  progress.textContent = files.length > 1
+    ? `✅ Indexed ${files.length} files`
+    : `✅ Indexed successfully`;
+  e.target.value = '';
+  nameInput.value = '';
+  nameInput.disabled = false;
+  await loadRagDocs(projectId);
 }
 
 function esc(str) {

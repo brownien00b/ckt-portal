@@ -95,8 +95,9 @@
     </p>
     <div id="rag-doc-list" style="margin-bottom:10px"></div>
     <div id="pdf-upload-area" class="hidden">
-      <label class="form-label">Upload PDF</label>
-      <input type="file" id="pdf-file-input" accept=".pdf" class="form-input" style="padding:6px">
+      <label class="form-label">Upload PDF(s)</label>
+      <input type="text" id="pdf-display-name" class="form-input" placeholder="Display name (auto-filled from filename, editable)" style="margin-bottom:8px">
+      <input type="file" id="pdf-file-input" accept=".pdf" multiple class="form-input" style="padding:6px">
       <div id="upload-progress" class="hidden" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
     </div>
 
