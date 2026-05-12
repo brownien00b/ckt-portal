@@ -123,36 +123,55 @@ Deno.serve(async (req) => {
     })
     .join('\n\n');
 
-  // Call Claude Haiku — follows citation format precisely, better document reasoning
-  const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
-  const llmRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: `Documents:\n${context}\n\nQuestion: ${query}` },
-      ],
-    }),
-  });
+  // LLM_PROVIDER=anthropic to use Claude Haiku; default is Cerebras
+  const provider = Deno.env.get('LLM_PROVIDER') ?? 'cerebras';
+  let answer: string;
 
-  if (!llmRes.ok) {
-    const err = await llmRes.text();
-    return new Response(JSON.stringify({ error: 'LLM error: ' + err }),
-      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  if (provider === 'anthropic') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY')!,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: `Documents:\n${context}\n\nQuestion: ${query}` }],
+      }),
+    });
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: 'LLM error: ' + await res.text() }),
+        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    }
+    answer = (await res.json()).content[0].text;
+  } else {
+    const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CEREBRAS_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-oss-120b',
+        max_tokens: 1024,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: `Documents:\n${context}\n\nQuestion: ${query}` },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: 'LLM error: ' + await res.text() }),
+        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    }
+    answer = (await res.json()).choices[0].message.content;
   }
 
-  const llmData = await llmRes.json();
-  const answer  = llmData.content[0].text;
-
   return new Response(
-    JSON.stringify({ answer, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' }),
+    JSON.stringify({ answer, provider, model: provider === 'anthropic' ? 'claude-haiku-4-5-20251001' : 'gpt-oss-120b' }),
     { headers: { ...CORS, 'Content-Type': 'application/json' } }
   );
 });
