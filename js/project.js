@@ -23,12 +23,20 @@ async function init() {
     return;
   }
 
+  // Fetch unique PDF filenames from document_chunks for this project
+  const { data: chunks } = await db
+    .from('document_chunks')
+    .select('filename')
+    .eq('project_id', project.id);
+
+  const ragFilenames = [...new Set((chunks || []).map(c => c.filename))].sort();
+
   document.title = `${project.name} — CKT Group`;
   document.getElementById('project-number').textContent = project.project_number;
-  renderProject(project);
+  renderProject(project, ragFilenames);
 }
 
-function renderProject(project) {
+function renderProject(project, ragFilenames = []) {
   const VALID_STATUSES = ['active', 'complete', 'pending'];
   const safeStatus = VALID_STATUSES.includes(project.status.toLowerCase())
     ? project.status.toLowerCase()
@@ -56,7 +64,7 @@ function renderProject(project) {
   `;
 
   renderMilestones(project.milestone_labels, project.current_milestone);
-  renderDocuments(project.project_documents);
+  renderDocuments(project.project_documents, ragFilenames, project.id);
   mountRag(project.id);
 }
 
@@ -81,14 +89,29 @@ function renderMilestones(labels, current) {
   el.innerHTML = items.join('');
 }
 
-function renderDocuments(docs) {
+async function renderDocuments(docs, ragFilenames, projectId) {
   const el = document.getElementById('documents-grid');
-  if (!docs || !docs.length) {
-    el.innerHTML = '<p class="text-muted">No documents added yet.</p>';
-    return;
-  }
-  const sorted = [...docs].sort((a, b) => a.display_order - b.display_order);
-  el.innerHTML = sorted.map(doc => {
+
+  // Build RAG PDF cards with signed download URLs
+  const ragCards = await Promise.all(ragFilenames.map(async filename => {
+    try {
+      const { data } = await db.storage
+        .from('project-documents')
+        .createSignedUrl(`${projectId}/${filename}`, 3600);
+      const url = data?.signedUrl;
+      const label = filename.replace(/\.pdf$/i, '');
+      return url
+        ? `<div class="doc-card">
+             <span class="doc-label">${escHtml(label)}</span>
+             <a class="btn-download" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">Download</a>
+           </div>`
+        : '';
+    } catch { return ''; }
+  }));
+
+  // Drive URL doc cards (non-PDF files)
+  const sorted = [...(docs || [])].sort((a, b) => a.display_order - b.display_order);
+  const driveCards = sorted.map(doc => {
     if (doc.drive_url && isSafeUrl(doc.drive_url)) {
       return `
         <div class="doc-card">
@@ -102,7 +125,10 @@ function renderDocuments(docs) {
         <span class="doc-label">${escHtml(doc.label)}</span>
         <span class="coming-soon-label">Coming Soon</span>
       </div>`;
-  }).join('');
+  });
+
+  const all = [...ragCards.filter(Boolean), ...driveCards];
+  el.innerHTML = all.length ? all.join('') : '<p class="text-muted">No documents added yet.</p>';
 }
 
 // ── RAG Section ───────────────────────────────────────────────
