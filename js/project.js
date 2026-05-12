@@ -183,6 +183,11 @@ window.ragSubmit = async function() {
 
   try {
     const { data: { session } } = await db.auth.getSession();
+    if (!session) {
+      area.innerHTML = '<div class="error-msg">Session expired — please <a href="/login.html">sign in again</a>.</div>';
+      document.getElementById('rag-submit').disabled = false;
+      return;
+    }
     const res = await fetch(
       'https://rlqeswhukjwfcaokkonj.supabase.co/functions/v1/query',
       {
@@ -217,8 +222,10 @@ function renderAnswer(raw) {
   function stashCites(text) {
     return text.replace(/\[CITE:([^\]:]+):(?:page\s*)?(\d+)\]/gi, (_, file, page) => {
       const key = `%%CITE${citeIdx++}%%`;
-      citeMap[key] = `<a class="cite-link" onclick="openPdf('${file.trim()}', ${page})"
-                        title="${file.trim()}, p.${page}">[${file.trim().replace('.pdf','')}, p.${page}]</a>`;
+      const safeFile = escHtml(file.trim());
+      const safePage = parseInt(page) || 1;
+      citeMap[key] = `<a class="cite-link" onclick="openPdf('${safeFile}', ${safePage})"
+                        title="${safeFile}, p.${safePage}">[${safeFile.replace('.pdf','')}, p.${safePage}]</a>`;
       return key;
     });
   }
@@ -266,6 +273,11 @@ window.openPdf = async function(filename, page) {
 
     // Get signed URL from Supabase Storage
     const { data: { session } } = await db.auth.getSession();
+    if (!session) {
+      document.getElementById('pdf-pages').innerHTML =
+        '<p style="color:var(--red);padding:20px">Session expired — please reload and sign in.</p>';
+      return;
+    }
     const storagePath = `${_projectDbId}/${filename}`;
     const { data, error } = await db.storage
       .from('project-documents')
@@ -503,7 +515,8 @@ function escHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function isSafeUrl(url) {
