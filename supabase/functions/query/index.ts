@@ -35,8 +35,9 @@ Deno.serve(async (req) => {
   }
 
   const { query, project_id } = await req.json() as { query: string; project_id: string };
-  if (!query?.trim() || !project_id) {
-    return new Response(JSON.stringify({ error: 'Missing query or project_id' }),
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!query?.trim() || !project_id || !UUID_RE.test(project_id)) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid query/project_id' }),
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
@@ -87,9 +88,15 @@ Deno.serve(async (req) => {
     match_count: TOP_K,
   });
 
-  if (searchError || !chunks?.length) {
-    return new Response(JSON.stringify({ error: 'No relevant content found.' }),
-      { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  if (searchError) {
+    return new Response(JSON.stringify({ error: 'Search failed: ' + searchError.message }),
+      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+  if (!chunks?.length) {
+    return new Response(
+      JSON.stringify({ answer: 'No relevant content was found in the indexed documents for this project. Try uploading and indexing PDFs in the admin panel.', provider: 'none', model: 'none' }),
+      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } }
+    );
   }
 
   // Build context

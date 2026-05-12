@@ -35,8 +35,9 @@ Deno.serve(async (req) => {
     chunks:     Array<{ page_num: number; content: string }>;
   };
 
-  if (!project_id || !filename || !chunks?.length) {
-    return new Response(JSON.stringify({ error: 'Missing fields' }),
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!project_id || !UUID_RE.test(project_id) || !filename || !chunks?.length) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid fields' }),
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
@@ -69,11 +70,15 @@ Deno.serve(async (req) => {
   }
 
   // Delete existing chunks for this file + project (re-index support)
-  await supabase
+  const { error: deleteError } = await supabase
     .from('document_chunks')
     .delete()
     .eq('project_id', project_id)
     .eq('filename', filename);
+  if (deleteError) {
+    return new Response(JSON.stringify({ error: 'Failed to clear existing chunks: ' + deleteError.message }),
+      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
 
   // Insert new chunks
   const rows = chunks.map((c, i) => ({
