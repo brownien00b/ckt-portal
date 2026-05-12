@@ -55,12 +55,13 @@ function renderProject(project, ragFilenames = []) {
       <div class="milestone-tracker" id="milestone-tracker"></div>
     </div>
 
-    <div class="documents-section">
-      <div class="section-title">Documents</div>
-      <div class="documents-grid" id="documents-grid"></div>
+    <div class="project-lower">
+      <div class="documents-section">
+        <div class="section-title">Documents</div>
+        <div class="documents-grid" id="documents-grid"></div>
+      </div>
+      <div id="rag-mount" class="rag-mount-col"></div>
     </div>
-
-    <div id="rag-mount"></div>
   `;
 
   renderMilestones(project.milestone_labels, project.current_milestone);

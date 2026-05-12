@@ -159,46 +159,49 @@ body {
 .milestone-step.done .milestone-label   { color: var(--gold); }
 
 /* ── Documents ───────────────────────────────────────────────── */
-.documents-section { margin-bottom: 48px; }
 .documents-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
-}
-.doc-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+.doc-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   gap: 12px;
 }
 .doc-card.coming-soon { opacity: 0.5; }
 .doc-label {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
-  line-height: 1.4;
+  flex: 1;
 }
 .btn-download {
   display: inline-block;
-  background: var(--gold);
-  color: var(--dark);
+  background: transparent;
+  color: var(--gold);
   font-size: 12px;
   font-weight: 700;
-  padding: 7px 14px;
+  padding: 5px 12px;
   border-radius: 6px;
+  border: 1px solid var(--gold);
   text-decoration: none;
   text-align: center;
-  transition: background .15s;
-  width: fit-content;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.btn-download:hover { background: #DDB86A; }
+.btn-download:hover { background: var(--gold); color: var(--dark); }
 .coming-soon-label {
   font-size: 12px;
   color: var(--muted);
   font-style: italic;
+  flex-shrink: 0;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────── */
@@ -398,8 +401,11 @@ body {
 .login-step.active { display: block; }
 
 /* ── RAG section (project page) ──────────────────────────────── */
-.rag-section {
-  margin-top: 40px;
+/* ── Project lower: docs sidebar + RAG ──────────────────────── */
+.project-lower {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
   /* break out of page-content max-width */
   width: 100vw;
   position: relative;
@@ -407,6 +413,18 @@ body {
   transform: translateX(-50%);
   padding: 0 24px;
   box-sizing: border-box;
+  margin-top: 32px;
+}
+.documents-section {
+  width: 240px;
+  flex-shrink: 0;
+}
+.rag-mount-col {
+  flex: 1;
+  min-width: 0;
+}
+.rag-section {
+  margin-top: 0;
 }
 .rag-workspace {
   display: flex;
@@ -631,7 +649,8 @@ body {
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .rag-section { padding: 0 12px; }
+  .project-lower { flex-direction: column; padding: 0 12px; }
+  .documents-section { width: 100%; }
   .rag-workspace {
     flex-direction: column;
     height: auto;
