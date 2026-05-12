@@ -71,16 +71,6 @@ function renderProject(project, ragFilenames = []) {
   renderMilestones(project.milestone_labels, project.current_milestone);
   renderDocuments(project.project_documents, ragFilenames, project.id);
   mountRag(project.id);
-  resizeProjectLower();
-  window.addEventListener('resize', resizeProjectLower);
-}
-
-function resizeProjectLower() {
-  const lower = document.getElementById('project-lower');
-  if (!lower) return;
-  const lowerTop = lower.getBoundingClientRect().top;
-  const available = window.innerHeight - lowerTop - 110; // 110 = footer + margin
-  lower.style.height = Math.max(available, 300) + 'px';
 }
 
 window.toggleDocsSidebar = function() {
@@ -90,7 +80,6 @@ window.toggleDocsSidebar = function() {
   const collapsed = sidebar.classList.toggle('collapsed');
   btn.textContent = collapsed ? '▶' : '◀';
   btn.title       = collapsed ? 'Show sidebar' : 'Hide sidebar';
-  resizeProjectLower();
 };
 
 function renderMilestones(labels, current) {
