@@ -330,14 +330,13 @@ window.openPdf = async function(filename, page) {
     pdfDoc = await pdfjsLib.getDocument(data.signedUrl).promise;
     totalPages = pdfDoc.numPages;
     document.getElementById('pdf-page-info').textContent = `${totalPages} pages`;
-    await renderAllPages();
-    scrollToPage(page);
+    await renderAllPages(page);
     return;
   }
   scrollToPage(page);
 };
 
-async function renderAllPages() {
+async function renderAllPages(targetPage) {
   if (!pdfDoc) return;
   const container = document.getElementById('pdf-pages');
   container.innerHTML = '';
@@ -345,14 +344,23 @@ async function renderAllPages() {
   const wrap   = document.getElementById('pdf-canvas-wrap');
   const availW = wrap.clientWidth - 32;
 
+  // Pre-create all page wrappers so scrollToPage works immediately
   for (let n = 1; n <= totalPages; n++) {
-    const pageObj   = await pdfDoc.getPage(n);
-    const baseScale = Math.min(availW / pageObj.getViewport({ scale: 1 }).width, 2.0);
-    const viewport  = pageObj.getViewport({ scale: baseScale * userZoom });
-
     const wrapper = document.createElement('div');
     wrapper.className = 'pdf-page-wrap';
     wrapper.id = `pdf-page-${n}`;
+    wrapper.dataset.pending = '1';
+    container.appendChild(wrapper);
+  }
+
+  // Render target page first so citation link lands on the right page instantly
+  const renderPage = async (n) => {
+    const pageObj   = await pdfDoc.getPage(n);
+    const baseScale = Math.min(availW / pageObj.getViewport({ scale: 1 }).width, 2.0);
+    const viewport  = pageObj.getViewport({ scale: baseScale * userZoom });
+    const wrapper   = document.getElementById(`pdf-page-${n}`);
+    if (!wrapper) return;
+    delete wrapper.dataset.pending;
     wrapper.style.width  = viewport.width + 'px';
     wrapper.style.height = viewport.height + 'px';
 
@@ -366,7 +374,6 @@ async function renderAllPages() {
     textLayerDiv.style.width  = viewport.width + 'px';
     textLayerDiv.style.height = viewport.height + 'px';
     wrapper.appendChild(textLayerDiv);
-    container.appendChild(wrapper);
 
     await pageObj.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
@@ -385,7 +392,16 @@ async function renderAllPages() {
       } catch {}
       pageTextDivs[n] = divs;
     }
-  }
+  };
+
+  const target = Math.max(1, Math.min(targetPage || 1, totalPages));
+  await renderPage(target);
+  scrollToPage(target);
+
+  // Render all other pages in background
+  const others = [];
+  for (let n = 1; n <= totalPages; n++) if (n !== target) others.push(n);
+  for (const n of others) await renderPage(n);
 }
 
 function scrollToPage(num) {
