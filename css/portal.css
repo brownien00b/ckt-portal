@@ -398,10 +398,20 @@ body {
 .login-step.active { display: block; }
 
 /* ── RAG section (project page) ──────────────────────────────── */
-.rag-section { margin-top: 40px; }
+.rag-section {
+  margin-top: 40px;
+  /* break out of page-content max-width */
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 24px;
+  box-sizing: border-box;
+}
 .rag-workspace {
   display: flex;
-  height: 600px;
+  height: calc(100vh - 220px);
+  min-height: 400px;
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -617,6 +627,21 @@ body {
   color: var(--muted);
   border-top: 1px solid var(--border);
   margin-top: 60px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .rag-section { padding: 0 12px; }
+  .rag-workspace {
+    flex-direction: column;
+    height: auto;
+    min-height: unset;
+  }
+  .rag-main { min-height: 340px; }
+  .pdf-panel { width: 100% !important; border-left: none; border-top: 1px solid var(--gold); }
+  .resize-handle { display: none; }
+  .page-content { padding: 24px 16px; }
+  .site-header { padding: 0 16px; }
 }
 
 /* ── Util ────────────────────────────────────────────────────── */
