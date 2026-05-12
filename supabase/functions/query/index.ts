@@ -54,21 +54,33 @@ Deno.serve(async (req) => {
 
   const VOYAGE_API_KEY   = Deno.env.get('VOYAGE_API_KEY')!;
   const CEREBRAS_API_KEY = Deno.env.get('CEREBRAS_API_KEY')!;
-  const TOP_K = 12;
+  const TOP_K = 8;
 
-  // Embed query
-  const embedRes = await fetch('https://api.voyageai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${VOYAGE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      input:      [query],
-      model:      'voyage-3-lite',
-      input_type: 'query',
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+
+  // Run vector search and keyword search in parallel
+  const keywords = query.toLowerCase().match(/\b[a-z0-9_\-]{3,}\b/g) ?? [];
+
+  const [embedRes, keywordRes] = await Promise.all([
+    // Vector search
+    fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${VOYAGE_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: [query], model: 'voyage-3-lite', input_type: 'query' }),
     }),
-  });
+    // Keyword search: match any keyword against content or filename
+    keywords.length
+      ? supabase.rpc('keyword_search_chunks', {
+          project_id_filter: project_id,
+          keywords,
+          match_count: TOP_K,
+        })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
   if (!embedRes.ok) {
     return new Response(JSON.stringify({ error: 'Embedding failed' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -76,13 +88,7 @@ Deno.serve(async (req) => {
   const embedData = await embedRes.json();
   const queryVec  = embedData.data[0].embedding;
 
-  // Vector search via service role (RLS already verified above)
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-  );
-
-  const { data: chunks, error: searchError } = await supabase.rpc('match_chunks', {
+  const { data: vectorChunks, error: searchError } = await supabase.rpc('match_chunks', {
     query_embedding: queryVec,
     project_id_filter: project_id,
     match_count: TOP_K,
@@ -92,7 +98,17 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Search failed: ' + searchError.message }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
-  if (!chunks?.length) {
+
+  // Merge vector + keyword results, deduplicate by id, vector results first
+  const keywordChunks = (keywordRes as { data: unknown[] | null }).data ?? [];
+  const seen = new Set<string>();
+  const chunks: Array<{ id: string; filename: string; page_num: number; content: string; similarity: number }> = [];
+  for (const c of [...(vectorChunks ?? []), ...keywordChunks]) {
+    const chunk = c as { id: string; filename: string; page_num: number; content: string; similarity: number };
+    if (!seen.has(chunk.id)) { seen.add(chunk.id); chunks.push(chunk); }
+  }
+
+  if (!chunks.length) {
     return new Response(
       JSON.stringify({ answer: 'No relevant content was found in the indexed documents for this project. Try uploading and indexing PDFs in the admin panel.', provider: 'none', model: 'none' }),
       { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } }

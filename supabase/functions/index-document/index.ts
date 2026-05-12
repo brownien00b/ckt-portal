@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
     embedding: allEmbeddings[i],
   }));
 
+
   const { error: insertError } = await supabase
     .from('document_chunks')
     .insert(rows);
