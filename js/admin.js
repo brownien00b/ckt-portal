@@ -438,6 +438,19 @@ async function uploadPdfs(e) {
         progress.textContent = `❌ Indexing failed (${file.name}): ` + err;
         return;
       }
+
+      // Auto-rename using AI suggested name if available
+      try {
+        const resData = await res.json();
+        if (resData.suggested_name) {
+          const aiName = resData.suggested_name.trim().replace(/\.pdf$/i, '') + '.pdf';
+          await db.from('document_chunks')
+            .update({ filename: aiName })
+            .eq('project_id', projectId)
+            .eq('filename', displayName);
+        }
+      } catch { /* non-fatal */ }
+
     } catch (err) {
       progress.textContent = `❌ Error (${file.name}): ` + err.message;
       return;
