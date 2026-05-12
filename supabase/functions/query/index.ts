@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
 
   const VOYAGE_API_KEY   = Deno.env.get('VOYAGE_API_KEY')!;
   const CEREBRAS_API_KEY = Deno.env.get('CEREBRAS_API_KEY')!;
-  const TOP_K = 8;
+  const TOP_K = 12;
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -115,12 +115,10 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Build context — strip [DocTitle] prefix from content (used for embedding, confuses LLM)
   const context = chunks
-    .map((c: { filename: string; page_num: number; content: string }) => {
-      const clean = c.content.replace(/^\[[^\]]+\]\s*/, '');
-      return `[${c.filename} — Page ${c.page_num}]\n${clean}`;
-    })
+    .map((c: { filename: string; page_num: number; content: string }) =>
+      `[${c.filename} — Page ${c.page_num}]\n${c.content}`
+    )
     .join('\n\n');
 
   // LLM_PROVIDER=anthropic to use Claude Haiku; default is Cerebras

@@ -74,13 +74,6 @@ Deno.serve(async (req) => {
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
-  // Prefix filename into content for better embedding matches on product names
-  const docTitle = filename.replace(/\.pdf$/i, '');
-  const chunksWithTitle = chunks.map(c => ({
-    ...c,
-    content: `[${docTitle}] ${c.content}`,
-  }));
-
   // Auto-name via Cerebras (non-fatal)
   let suggested_name: string | null = null;
   try {
@@ -102,10 +95,10 @@ Deno.serve(async (req) => {
   const VOYAGE_API_KEY = Deno.env.get('VOYAGE_API_KEY')!;
   const BATCH_SIZE = 100;
 
-  // Embed in batches
+  // Embed clean page text — no title prefix so each page's semantic content is distinct
   const allEmbeddings: number[][] = [];
-  for (let i = 0; i < chunksWithTitle.length; i += BATCH_SIZE) {
-    const batch = chunksWithTitle.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE);
     const res   = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${VOYAGE_API_KEY}`, 'Content-Type': 'application/json' },
