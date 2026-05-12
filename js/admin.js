@@ -510,77 +510,40 @@ async function uploadPdfs(e) {
     const label = (n) => files.length > 1 ? `[${i + 1}/${files.length}] ${n}` : n;
 
     try {
-      // Step 1: Parse PDF first so we can extract a smart display name
-      progress.textContent = label(`Reading ${file.name}…`);
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-      // Step 2: Determine display name (manual input → PDF metadata → first-page text → filename)
-      let displayName;
-      let nameSource = 'original filename';
+      // Step 1: Determine display name (manual → metadata → original filename)
+      let displayName = file.name;
       if (files.length === 1 && nameInput.value.trim()) {
         displayName = nameInput.value.trim() + '.pdf';
-        nameSource  = 'manual input';
       } else {
-        displayName = file.name;
-
-        // Try PDF metadata title first
         try {
-          const meta  = await pdfDoc.getMetadata();
+          const ab    = await file.arrayBuffer();
+          const doc   = await pdfjsLib.getDocument({ data: ab }).promise;
+          const meta  = await doc.getMetadata();
           const title = meta.info?.Title?.trim();
-          console.log('[naming] PDF metadata title:', title);
           if (title && title.length > 3 && title.length < 120 && !/^\d+$/.test(title)) {
             displayName = title.replace(/[<>:"/\\|?*\r\n]+/g, '').trim().slice(0, 80) + '.pdf';
-            nameSource  = 'PDF metadata';
           }
-        } catch (e) { console.warn('[naming] metadata error:', e); }
-
-        // If still the original filename, derive a name from first-page text
-        if (displayName === file.name) {
-          try {
-            const firstPage = await pdfDoc.getPage(1);
-            const content   = await firstPage.getTextContent();
-            const raw       = extractPageText(content, 500);
-            console.log('[naming] first-page text (first 200):', raw.slice(0, 200));
-            // Take first 80 chars of the text blob, clean up, use as title
-            const candidate = raw.replace(/[<>:"/\\|?*]+/g, '').trim().slice(0, 80);
-            if (candidate.length > 4 && !/^\d+$/.test(candidate)) {
-              displayName = candidate + '.pdf';
-              nameSource  = 'first-page text';
-            }
-          } catch (e) { console.warn('[naming] first-page error:', e); }
-        }
+        } catch { /* non-fatal */ }
       }
 
-      console.log(`[naming] source="${nameSource}" name="${displayName}"`);
-      progress.textContent = label(`Uploading "${displayName}"… (name from ${nameSource})`);
-      const storagePath = `${projectId}/${displayName}`;
+      // Step 2: Upload to storage
+      progress.textContent = label(`Uploading "${displayName}"…`);
       const { error: storageError } = await db.storage
         .from('project-documents')
-        .upload(storagePath, file, { upsert: true });
+        .upload(`${projectId}/${displayName}`, file, { upsert: true });
       if (storageError) {
         progress.textContent = `❌ Upload failed (${file.name}): ` + storageError.message;
         return;
       }
 
-      // Step 4: Extract text chunks
-      progress.textContent = label(`Parsing ${pdfDoc.numPages} pages…`);
-      const chunks = [];
-      for (let p = 1; p <= pdfDoc.numPages; p++) {
-        const page    = await pdfDoc.getPage(p);
-        const content = await page.getTextContent();
-        const text    = extractPageText(content, 2000);
-        if (text) chunks.push({ page_num: p, content: text });
-      }
-
-      // Step 5: Index (edge function also tries Cerebras naming as optional upgrade)
-      progress.textContent = label(`Indexing ${chunks.length} chunks…`);
+      // Step 3: Index — edge function downloads from storage and extracts with PyMuPDF
+      progress.textContent = label(`Indexing "${displayName}"… (extracting with PyMuPDF)`);
       const res = await fetch(
         'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-          body: JSON.stringify({ project_id: projectId, filename: displayName, chunks })
+          body: JSON.stringify({ project_id: projectId, filename: displayName })
         }
       );
       if (!res.ok) {
@@ -589,13 +552,13 @@ async function uploadPdfs(e) {
         return;
       }
 
-      // Step 6: If edge function returns a better AI name, upgrade
+      // Step 4: Use AI-suggested name if returned
       try {
         const resData = await res.json();
         if (resData.suggested_name) {
           const aiName = resData.suggested_name.trim().replace(/\.pdf$/i, '') + '.pdf';
           if (aiName !== displayName) {
-            progress.textContent = label(`Naming → "${resData.suggested_name.trim()}"…`);
+            progress.textContent = label(`Naming → "${aiName}"…`);
             await db.from('document_chunks').update({ filename: aiName })
               .eq('project_id', projectId).eq('filename', displayName);
             await db.storage.from('project-documents')

@@ -10,14 +10,12 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: CORS });
   }
 
-  // Auth check
   const authHeader = req.headers.get('Authorization') ?? '';
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
-  // Verify caller is the admin
   const userClient = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
@@ -29,41 +27,76 @@ Deno.serve(async (req) => {
       { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
-  const { project_id, filename, chunks } = await req.json() as {
+  const { project_id, filename } = await req.json() as {
     project_id: string;
     filename:   string;
-    chunks:     Array<{ page_num: number; content: string }>;
   };
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!project_id || !UUID_RE.test(project_id) || !filename || !chunks?.length) {
+  if (!project_id || !UUID_RE.test(project_id) || !filename) {
     return new Response(JSON.stringify({ error: 'Missing or invalid fields' }),
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
-  // Auto-generate a descriptive name FIRST (before embedding — avoids timeout)
+  const EXTRACT_URL = Deno.env.get('EXTRACT_SERVICE_URL');
+  const EXTRACT_KEY = Deno.env.get('EXTRACT_API_KEY') ?? '';
+
+  // Get signed URL for the PDF in storage
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from('project-documents')
+    .createSignedUrl(`${project_id}/${filename}`, 300);
+  if (signedError || !signedData?.signedUrl) {
+    return new Response(JSON.stringify({ error: 'Could not create signed URL: ' + signedError?.message }),
+      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+
+  let chunks: Array<{ page_num: number; content: string }>;
+
+  if (EXTRACT_URL) {
+    // Use Railway PyMuPDF extraction service
+    const extractRes = await fetch(`${EXTRACT_URL}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': EXTRACT_KEY },
+      body: JSON.stringify({ url: signedData.signedUrl }),
+    });
+    if (!extractRes.ok) {
+      return new Response(JSON.stringify({ error: 'Extraction service error: ' + await extractRes.text() }),
+        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    }
+    chunks = (await extractRes.json()).chunks;
+  } else {
+    return new Response(JSON.stringify({ error: 'EXTRACT_SERVICE_URL not configured' }),
+      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+
+  if (!chunks?.length) {
+    return new Response(JSON.stringify({ error: 'No text extracted from PDF' }),
+      { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+
+  // Prefix filename into content for better embedding matches on product names
+  const docTitle = filename.replace(/\.pdf$/i, '');
+  const chunksWithTitle = chunks.map(c => ({
+    ...c,
+    content: `[${docTitle}] ${c.content}`,
+  }));
+
+  // Auto-name via Cerebras (non-fatal)
   let suggested_name: string | null = null;
   try {
-    const sample = chunks.slice(0, 3).map(c => c.content).join('\n').slice(0, 800);
+    const sample  = chunks.slice(0, 3).map(c => c.content).join('\n').slice(0, 800);
     const nameRes = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('CEREBRAS_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${Deno.env.get('CEREBRAS_API_KEY')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-oss-120b',
-        max_tokens: 20,
+        model: 'gpt-oss-120b', max_tokens: 20,
         messages: [
-          { role: 'system', content: 'You generate short document titles. Respond with ONLY a title, 2-6 words, no punctuation, no explanation.' },
-          { role: 'user', content: `Document content:\n${sample}\n\nTitle:` }
+          { role: 'system', content: 'Generate a short document title. Respond with ONLY 2-6 words, no punctuation.' },
+          { role: 'user',   content: `Document:\n${sample}\n\nTitle:` },
         ],
       }),
     });
-    if (nameRes.ok) {
-      const nameData = await nameRes.json();
-      suggested_name = nameData.choices?.[0]?.message?.content?.trim() || null;
-    }
+    if (nameRes.ok) suggested_name = (await nameRes.json()).choices?.[0]?.message?.content?.trim() || null;
   } catch { /* non-fatal */ }
 
   const VOYAGE_API_KEY = Deno.env.get('VOYAGE_API_KEY')!;
@@ -71,41 +104,25 @@ Deno.serve(async (req) => {
 
   // Embed in batches
   const allEmbeddings: number[][] = [];
-  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-    const batch  = chunks.slice(i, i + BATCH_SIZE);
-    const res    = await fetch('https://api.voyageai.com/v1/embeddings', {
+  for (let i = 0; i < chunksWithTitle.length; i += BATCH_SIZE) {
+    const batch = chunksWithTitle.slice(i, i + BATCH_SIZE);
+    const res   = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${VOYAGE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input:      batch.map(c => c.content),
-        model:      'voyage-3-lite',
-        input_type: 'document',
-      }),
+      headers: { 'Authorization': `Bearer ${VOYAGE_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: batch.map(c => c.content), model: 'voyage-3-lite', input_type: 'document' }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      return new Response(JSON.stringify({ error: 'Voyage API error: ' + err }),
+      return new Response(JSON.stringify({ error: 'Voyage API error: ' + await res.text() }),
         { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
-    const data = await res.json();
-    allEmbeddings.push(...data.data.map((d: { embedding: number[] }) => d.embedding));
+    allEmbeddings.push(...(await res.json()).data.map((d: { embedding: number[] }) => d.embedding));
   }
 
-  // Delete existing chunks for this file + project (re-index support)
-  const { error: deleteError } = await supabase
-    .from('document_chunks')
-    .delete()
-    .eq('project_id', project_id)
-    .eq('filename', filename);
-  if (deleteError) {
-    return new Response(JSON.stringify({ error: 'Failed to clear existing chunks: ' + deleteError.message }),
-      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
-  }
+  // Delete existing chunks
+  await supabase.from('document_chunks').delete()
+    .eq('project_id', project_id).eq('filename', filename);
 
-  // Insert new chunks
+  // Insert new chunks (store clean content without title prefix for LLM context)
   const rows = chunks.map((c, i) => ({
     project_id,
     filename,
@@ -114,11 +131,7 @@ Deno.serve(async (req) => {
     embedding: allEmbeddings[i],
   }));
 
-
-  const { error: insertError } = await supabase
-    .from('document_chunks')
-    .insert(rows);
-
+  const { error: insertError } = await supabase.from('document_chunks').insert(rows);
   if (insertError) {
     return new Response(JSON.stringify({ error: insertError.message }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
