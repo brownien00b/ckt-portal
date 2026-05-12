@@ -373,12 +373,11 @@ document.getElementById('pdf-file-input')?.addEventListener('change', e => {
   if (!files?.length) return;
   const nameInput = document.getElementById('pdf-display-name');
   if (files.length === 1) {
-    if (!nameInput.value.trim()) {
-      nameInput.value = files[0].name.replace(/\.pdf$/i, '');
-    }
     nameInput.disabled = false;
+    // Don't pre-fill — leave empty so smart naming (metadata/text/Cerebras) runs.
+    // User can type here to override.
   } else {
-    nameInput.value = `${files.length} files selected — names auto-filled from filenames`;
+    nameInput.value = '';
     nameInput.disabled = true;
   }
 });
