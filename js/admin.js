@@ -461,11 +461,22 @@ async function uploadPdfs(e) {
       try {
         const resData = await res.json();
         if (resData.suggested_name) {
-          const aiName = resData.suggested_name.trim().replace(/\.pdf$/i, '') + '.pdf';
+          const raw    = resData.suggested_name.trim();
+          const aiName = raw.replace(/\.pdf$/i, '') + '.pdf';
+          progress.textContent = files.length > 1
+            ? `[${i + 1}/${files.length}] Naming → "${raw}"…`
+            : `Naming → "${raw}"…`;
+          // Update chunks
           await db.from('document_chunks')
             .update({ filename: aiName })
             .eq('project_id', projectId)
             .eq('filename', displayName);
+          // Also rename the storage object so downloads stay in sync
+          if (aiName !== displayName) {
+            await db.storage.from('project-documents')
+              .move(`${projectId}/${displayName}`, `${projectId}/${aiName}`)
+              .catch(() => {/* non-fatal if file already renamed */});
+          }
         }
       } catch { /* non-fatal */ }
 

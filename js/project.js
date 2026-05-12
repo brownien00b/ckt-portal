@@ -55,9 +55,13 @@ function renderProject(project, ragFilenames = []) {
       <div class="milestone-tracker" id="milestone-tracker"></div>
     </div>
 
-    <div class="project-lower">
-      <div class="documents-section">
-        <div class="section-title">Documents</div>
+    <div class="project-lower" id="project-lower">
+      <div class="documents-section" id="docs-sidebar">
+        <div class="sidebar-header">
+          <span class="section-title" style="margin:0;border:none;padding:0">Documents</span>
+          <button class="btn-sidebar-toggle" id="sidebar-toggle"
+                  onclick="toggleDocsSidebar()" title="Hide sidebar">◀</button>
+        </div>
         <div class="documents-grid" id="documents-grid"></div>
       </div>
       <div id="rag-mount" class="rag-mount-col"></div>
@@ -67,7 +71,27 @@ function renderProject(project, ragFilenames = []) {
   renderMilestones(project.milestone_labels, project.current_milestone);
   renderDocuments(project.project_documents, ragFilenames, project.id);
   mountRag(project.id);
+  resizeProjectLower();
+  window.addEventListener('resize', resizeProjectLower);
 }
+
+function resizeProjectLower() {
+  const lower = document.getElementById('project-lower');
+  if (!lower) return;
+  const lowerTop = lower.getBoundingClientRect().top;
+  const available = window.innerHeight - lowerTop - 110; // 110 = footer + margin
+  lower.style.height = Math.max(available, 300) + 'px';
+}
+
+window.toggleDocsSidebar = function() {
+  const sidebar = document.getElementById('docs-sidebar');
+  const btn     = document.getElementById('sidebar-toggle');
+  if (!sidebar) return;
+  const collapsed = sidebar.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '▶' : '◀';
+  btn.title       = collapsed ? 'Show sidebar' : 'Hide sidebar';
+  resizeProjectLower();
+};
 
 function renderMilestones(labels, current) {
   const el = document.getElementById('milestone-tracker');
@@ -93,36 +117,31 @@ function renderMilestones(labels, current) {
 async function renderDocuments(docs, ragFilenames, projectId) {
   const el = document.getElementById('documents-grid');
 
-  // Build RAG PDF cards with signed download URLs
-  const ragCards = await Promise.all(ragFilenames.map(async filename => {
-    try {
-      const { data } = await db.storage
-        .from('project-documents')
-        .createSignedUrl(`${projectId}/${filename}`, 3600);
-      const url = data?.signedUrl;
-      const label = filename.replace(/\.pdf$/i, '');
-      return url
-        ? `<div class="doc-card">
-             <span class="doc-label">${escHtml(label)}</span>
-             <a class="btn-download" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">Download</a>
-           </div>`
-        : '';
-    } catch { return ''; }
-  }));
+  // Build RAG PDF cards — clickable to open inline PDF viewer
+  const ragCards = ragFilenames.map(filename => {
+    const label    = filename.replace(/\.pdf$/i, '');
+    const safeName = escHtml(filename);
+    return `<div class="doc-card doc-pdf-card" onclick="openPdf('${safeName}', 1)" title="Open ${escHtml(label)}">
+               <span class="doc-icon">📄</span>
+               <span class="doc-label">${escHtml(label)}</span>
+             </div>`;
+  });
 
-  // Drive URL doc cards (non-PDF files)
+  // Drive URL doc cards
   const sorted = [...(docs || [])].sort((a, b) => a.display_order - b.display_order);
   const driveCards = sorted.map(doc => {
     if (doc.drive_url && isSafeUrl(doc.drive_url)) {
       return `
         <div class="doc-card">
+          <span class="doc-icon">🔗</span>
           <span class="doc-label">${escHtml(doc.label)}</span>
           <a class="btn-download" href="${escHtml(doc.drive_url)}"
-             target="_blank" rel="noopener noreferrer">Download</a>
+             target="_blank" rel="noopener noreferrer">Open</a>
         </div>`;
     }
     return `
       <div class="doc-card coming-soon">
+        <span class="doc-icon">📄</span>
         <span class="doc-label">${escHtml(doc.label)}</span>
         <span class="coming-soon-label">Coming Soon</span>
       </div>`;
