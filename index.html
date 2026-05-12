@@ -3,9 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CKT Group — Portal</title>
+  <title>CKT Group — Projects</title>
+  <link rel="stylesheet" href="/css/portal.css">
 </head>
 <body>
-  <p>Loading…</p>
+<header class="site-header">
+  <span class="brand">CKT Group LLC</span>
+  <div class="flex gap-8">
+    <a href="/admin.html" class="btn btn-secondary" style="font-size:13px;padding:7px 14px">Admin</a>
+    <button class="btn btn-secondary" id="signout-btn"
+            style="font-size:13px;padding:7px 14px">Sign Out</button>
+  </div>
+</header>
+
+<div class="page-content">
+  <div class="flex-between" style="margin-bottom:28px">
+    <h1 style="font-size:22px">All Projects</h1>
+  </div>
+  <div id="project-list">
+    <div class="rag-status"><div class="spinner"></div> Loading…</div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  CKT Group LLC &nbsp;|&nbsp; arpan@thecktgroup.com &nbsp;|&nbsp; Confidential
+</footer>
+
+<script type="module" src="/js/index.js"></script>
 </body>
 </html>
