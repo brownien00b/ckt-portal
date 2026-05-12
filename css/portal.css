@@ -599,7 +599,8 @@ body {
   padding: 2px 6px;
   cursor: pointer;
   transition: background .12s;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 .cite-link:hover { background: rgba(204,164,82,.28); }
 .sources-section {
@@ -622,6 +623,8 @@ body {
   padding-left: 10px;
   border-left: 2px solid var(--border);
   line-height: 1.5;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .rag-status {
   display: flex;
