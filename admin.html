@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CKT Group — Admin</title>
+  <link rel="stylesheet" href="/css/portal.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <span class="brand">CKT Group LLC</span>
+  <div class="flex gap-8">
+    <button class="btn btn-primary" onclick="openNewModal()"
+            style="font-size:13px;padding:7px 14px">+ New Project</button>
+    <a href="/index.html" class="btn btn-secondary"
+       style="font-size:13px;padding:7px 14px">← All Projects</a>
+    <button class="btn btn-secondary" id="signout-btn"
+            style="font-size:13px;padding:7px 14px">Sign Out</button>
+  </div>
+</header>
+
+<div class="page-content">
+  <h1 style="font-size:22px;margin-bottom:24px">Project Admin</h1>
+  <div id="project-list">
+    <div class="rag-status"><div class="spinner"></div> Loading…</div>
+  </div>
+</div>
+
+<!-- Project edit/create modal -->
+<div class="modal-overlay" id="project-modal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">New Project</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <input type="hidden" id="edit-project-id">
+
+    <!-- Section: Details -->
+    <div class="section-title" style="margin-bottom:16px">Project Details</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="form-group">
+        <label class="form-label">Project Number *</label>
+        <input class="form-input" id="f-number" placeholder="CKT-2026-EZG-001">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-select" id="f-status">
+          <option value="Pending">Pending</option>
+          <option value="Active">Active</option>
+          <option value="Complete">Complete</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="form-group">
+        <label class="form-label">Project Name *</label>
+        <input class="form-input" id="f-name" placeholder="Fluid Fill MES Integration">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Name</label>
+        <input class="form-input" id="f-client" placeholder="EZ-Go Textron">
+      </div>
+    </div>
+
+    <!-- Section: Milestones -->
+    <div class="section-title" style="margin:20px 0 12px">Milestones</div>
+    <div class="form-group" style="display:flex;gap:14px;align-items:flex-end;margin-bottom:16px">
+      <div style="flex:0 0 80px">
+        <label class="form-label">Current Step</label>
+        <input class="form-input" id="f-current-milestone" type="number" min="1" value="1">
+      </div>
+    </div>
+    <div id="milestone-list"></div>
+    <button class="btn-add" onclick="addMilestone()">+ Add Milestone</button>
+
+    <!-- Section: Documents -->
+    <div class="section-title" style="margin:24px 0 12px">Documents</div>
+    <div id="document-list"></div>
+    <button class="btn-add" onclick="addDocument()">+ Add Document</button>
+
+    <!-- Section: Authorized Emails -->
+    <div class="section-title" style="margin:24px 0 12px">Authorized Client Emails</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Only these email addresses can view this project after OTP login.
+    </p>
+    <div id="email-list"></div>
+    <button class="btn-add" onclick="addEmail()">+ Add Email</button>
+
+    <!-- Section: RAG Documents -->
+    <div class="section-title" style="margin:24px 0 12px">RAG Documents (PDF)</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Upload PDFs to enable natural-language search on this project's documents.
+    </p>
+    <div id="rag-doc-list" style="margin-bottom:10px"></div>
+    <div id="pdf-upload-area" class="hidden">
+      <label class="form-label">Upload PDF</label>
+      <input type="file" id="pdf-file-input" accept=".pdf" class="form-input" style="padding:6px">
+      <div id="upload-progress" class="hidden" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:28px">
+      <div>
+        <button class="btn btn-danger" id="delete-btn" onclick="deleteProject()"
+                style="display:none">Delete Project</button>
+      </div>
+      <div class="flex gap-8">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="save-btn" onclick="saveProject()">Save Project</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  CKT Group LLC &nbsp;|&nbsp; arpan@thecktgroup.com &nbsp;|&nbsp; Confidential
+</footer>
+
+<script type="module" src="/js/admin.js"></script>
+</body>
+</html>
