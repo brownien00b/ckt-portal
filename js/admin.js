@@ -1,5 +1,27 @@
 import { db, requireAdmin } from '/js/supabase-client.js';
 
+// Extract text from a PDF.js page in reading order (top→bottom, left→right)
+// Matches PyMuPDF's page.get_text() output quality for complex layouts
+function extractPageText(textContent, maxChars = 2000) {
+  const items = textContent.items.filter(i => i.str?.trim());
+  // Sort by Y descending (top of page first), then X ascending (left to right)
+  items.sort((a, b) => {
+    const ay = a.transform[5], by = b.transform[5];
+    if (Math.abs(ay - by) > 3) return by - ay;
+    return a.transform[4] - b.transform[4];
+  });
+  // Add newline when Y position changes significantly (new line of text)
+  const parts = [];
+  let lastY = null;
+  for (const item of items) {
+    const y = item.transform[5];
+    if (lastY !== null && Math.abs(y - lastY) > 8) parts.push('\n');
+    parts.push(item.str);
+    lastY = y;
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, maxChars);
+}
+
 let _session = null;
 
 async function init() {
@@ -319,7 +341,7 @@ window.reindexAll = async function() {
     for (let p = 1; p <= pdfDoc.numPages; p++) {
       const page    = await pdfDoc.getPage(p);
       const content = await page.getTextContent();
-      const text    = content.items.map(i => i.str).join(' ').trim().slice(0, 1900);
+      const text    = extractPageText(content, 1900);
       // Prepend doc title so product name is always in the embedding
       chunks.push({ page_num: p, content: `[${docTitle}] ${text || '(no text)'}` });
     }
@@ -518,7 +540,7 @@ async function uploadPdfs(e) {
           try {
             const firstPage = await pdfDoc.getPage(1);
             const content   = await firstPage.getTextContent();
-            const raw       = content.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+            const raw       = extractPageText(content, 500);
             console.log('[naming] first-page text (first 200):', raw.slice(0, 200));
             // Take first 80 chars of the text blob, clean up, use as title
             const candidate = raw.replace(/[<>:"/\\|?*]+/g, '').trim().slice(0, 80);
@@ -547,7 +569,7 @@ async function uploadPdfs(e) {
       for (let p = 1; p <= pdfDoc.numPages; p++) {
         const page    = await pdfDoc.getPage(p);
         const content = await page.getTextContent();
-        const text    = content.items.map(item => item.str).join(' ').trim().slice(0, 2000);
+        const text    = extractPageText(content, 2000);
         if (text) chunks.push({ page_num: p, content: text });
       }
 
