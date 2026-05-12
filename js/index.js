@@ -26,8 +26,8 @@ async function init() {
   listEl.innerHTML = `<div class="project-list">${projects.map(p => {
     const totalSteps = p.milestone_labels?.length || 0;
     const progress   = totalSteps ? `Step ${p.current_milestone} of ${totalSteps}` : '—';
-    const safeStatus = VALID_STATUSES.includes(p.status.toLowerCase())
-      ? p.status.toLowerCase()
+    const safeStatus = VALID_STATUSES.includes((p.status || '').toLowerCase())
+      ? (p.status || '').toLowerCase()
       : 'pending';
     return `
       <div class="project-row">
@@ -39,7 +39,7 @@ async function init() {
         <div class="project-row-actions">
           <a href="/project.html?id=${encodeURIComponent(p.project_number)}"
              class="btn btn-secondary" style="font-size:12px;padding:6px 12px"
-             target="_blank">View</a>
+             target="_blank" rel="noopener noreferrer">View</a>
           <a href="/admin.html?edit=${encodeURIComponent(p.project_number)}"
              class="btn btn-secondary" style="font-size:12px;padding:6px 12px">Edit</a>
         </div>
