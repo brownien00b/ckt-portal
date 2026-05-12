@@ -317,43 +317,14 @@ window.reindexAll = async function() {
   let done = 0;
   for (const file of pdfs) {
     const filename = file.name;
-    progress.textContent = `[${++done}/${pdfs.length}] Downloading ${filename}…`;
+    progress.textContent = `[${++done}/${pdfs.length}] Indexing ${filename}…`;
 
-    // Download PDF from storage
-    const { data: blob, error: dlErr } = await db.storage
-      .from('project-documents').download(`${projectId}/${filename}`);
-    if (dlErr) { progress.textContent = `❌ Download failed (${filename}): ` + dlErr.message; continue; }
-
-    // Parse PDF
-    const arrayBuffer = await blob.arrayBuffer();
-    let pdfDoc;
-    try {
-      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    } catch (e) {
-      progress.textContent = `❌ Parse failed (${filename}): ` + e.message;
-      continue;
-    }
-
-    // Extract text chunks, prefixing each with the filename so product names match queries
-    progress.textContent = `[${done}/${pdfs.length}] Extracting ${pdfDoc.numPages} pages from ${filename}…`;
-    const docTitle = filename.replace(/\.pdf$/i, '');
-    const chunks = [];
-    for (let p = 1; p <= pdfDoc.numPages; p++) {
-      const page    = await pdfDoc.getPage(p);
-      const content = await page.getTextContent();
-      const text    = extractPageText(content, 1900);
-      // Prepend doc title so product name is always in the embedding
-      chunks.push({ page_num: p, content: `[${docTitle}] ${text || '(no text)'}` });
-    }
-
-    // Re-index via edge function
-    progress.textContent = `[${done}/${pdfs.length}] Indexing ${chunks.length} chunks for ${filename}…`;
     const res = await fetch(
       'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ project_id: projectId, filename, chunks }),
+        body: JSON.stringify({ project_id: projectId, filename }),
       }
     );
     if (!res.ok) {
@@ -361,6 +332,8 @@ window.reindexAll = async function() {
       progress.textContent = `❌ Index failed (${filename}): ` + err;
       continue;
     }
+    const result = await res.json();
+    progress.textContent = `[${done}/${pdfs.length}] ✓ ${filename} (${result.chunks_indexed ?? '?'} chunks)`;
   }
 
   progress.textContent = `✅ Re-indexed ${pdfs.length} file${pdfs.length !== 1 ? 's' : ''}`;
