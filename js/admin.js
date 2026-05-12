@@ -117,7 +117,7 @@ function renderMilestoneList(labels) {
       <input class="form-input" value="${esc(label)}"
              placeholder="e.g. Contract &amp; Kickoff"
              onchange="updateMilestoneMax()">
-      <button class="btn-icon" onclick="removeMilestone(${i})">✕</button>
+      <button class="btn-icon" onclick="this.closest('.list-editor-item').remove();updateMilestoneMax()">✕</button>
     </div>`).join('');
   updateMilestoneMax();
 }
@@ -131,15 +131,11 @@ window.addMilestone = function() {
   div.innerHTML = `
     <input class="form-input" placeholder="e.g. On-Site Installation"
            onchange="updateMilestoneMax()">
-    <button class="btn-icon" onclick="removeMilestone(${newIdx})">✕</button>`;
+    <button class="btn-icon" onclick="this.closest('.list-editor-item').remove();updateMilestoneMax()">✕</button>`;
   document.getElementById('milestone-list').appendChild(div);
   updateMilestoneMax();
 };
 
-window.removeMilestone = function(idx) {
-  document.getElementById(`ms-${idx}`)?.remove();
-  updateMilestoneMax();
-};
 
 function updateMilestoneMax() {
   const count = document.querySelectorAll('#milestone-list .list-editor-item').length;
@@ -165,7 +161,7 @@ function renderDocumentList(docs) {
              placeholder="Label (e.g. Proposal)" style="flex:1">
       <input class="form-input" value="${esc(doc.drive_url || '')}"
              placeholder="Google Drive URL (leave blank = Coming Soon)" style="flex:2">
-      <button class="btn-icon" onclick="removeDocument(${i})">✕</button>
+      <button class="btn-icon" onclick="this.closest('.list-editor-item').remove()">✕</button>
     </div>`).join('');
 }
 
@@ -178,13 +174,10 @@ window.addDocument = function() {
   div.innerHTML = `
     <input class="form-input" placeholder="Label (e.g. Proposal)" style="flex:1">
     <input class="form-input" placeholder="Google Drive URL (leave blank = Coming Soon)" style="flex:2">
-    <button class="btn-icon" onclick="removeDocument(${idx})">✕</button>`;
+    <button class="btn-icon" onclick="this.closest('.list-editor-item').remove()">✕</button>`;
   document.getElementById('document-list').appendChild(div);
 };
 
-window.removeDocument = function(idx) {
-  document.getElementById(`doc-item-${idx}`)?.remove();
-};
 
 function getDocuments() {
   return [...document.querySelectorAll('#document-list .list-editor-item')].map((row, i) => {
@@ -205,7 +198,7 @@ function renderEmailList(emails) {
     <div class="list-editor-item" id="email-item-${i}">
       <input class="form-input" value="${esc(email)}"
              type="email" placeholder="client@company.com">
-      <button class="btn-icon" onclick="removeEmail(${i})">✕</button>
+      <button class="btn-icon" onclick="this.closest('.list-editor-item').remove()">✕</button>
     </div>`).join('');
 }
 
@@ -217,13 +210,10 @@ window.addEmail = function() {
   div.id = `email-item-${idx}`;
   div.innerHTML = `
     <input class="form-input" type="email" placeholder="client@company.com">
-    <button class="btn-icon" onclick="removeEmail(${idx})">✕</button>`;
+    <button class="btn-icon" onclick="this.closest('.list-editor-item').remove()">✕</button>`;
   document.getElementById('email-list').appendChild(div);
 };
 
-window.removeEmail = function(idx) {
-  document.getElementById(`email-item-${idx}`)?.remove();
-};
 
 function getEmails() {
   return [...document.querySelectorAll('#email-list .list-editor-item input')]
@@ -304,19 +294,23 @@ window.saveProject = async function() {
   }
 
   // Replace documents
-  await db.from('project_documents').delete().eq('project_id', savedProjectId);
+  const { error: delDocErr } = await db.from('project_documents').delete().eq('project_id', savedProjectId);
+  if (delDocErr) { alert('Error saving documents: ' + delDocErr.message); btn.disabled = false; btn.textContent = 'Save Project'; return; }
   if (documents.length) {
-    await db.from('project_documents').insert(
+    const { error: insDocErr } = await db.from('project_documents').insert(
       documents.map(d => ({ ...d, project_id: savedProjectId }))
     );
+    if (insDocErr) { alert('Error saving documents: ' + insDocErr.message); btn.disabled = false; btn.textContent = 'Save Project'; return; }
   }
 
   // Replace access emails
-  await db.from('project_access').delete().eq('project_id', savedProjectId);
+  const { error: delEmailErr } = await db.from('project_access').delete().eq('project_id', savedProjectId);
+  if (delEmailErr) { alert('Error saving access: ' + delEmailErr.message); btn.disabled = false; btn.textContent = 'Save Project'; return; }
   if (emails.length) {
-    await db.from('project_access').insert(
+    const { error: insEmailErr } = await db.from('project_access').insert(
       emails.map(email => ({ project_id: savedProjectId, email }))
     );
+    if (insEmailErr) { alert('Error saving access: ' + insEmailErr.message); btn.disabled = false; btn.textContent = 'Save Project'; return; }
   }
 
   btn.disabled = false;
@@ -343,7 +337,7 @@ document.getElementById('pdf-file-input')?.addEventListener('change', uploadPdf)
 
 async function uploadPdf(e) {
   const file = e.target.files?.[0];
-  if (!file || !file.name.endsWith('.pdf')) return;
+  if (!file || !file.name.endsWith('.pdf') || file.type !== 'application/pdf') return;
   const projectId = document.getElementById('pdf-upload-area').dataset.projectId;
   if (!projectId) { alert('Save the project first before uploading PDFs.'); return; }
 
@@ -362,46 +356,51 @@ async function uploadPdf(e) {
     return;
   }
 
-  progress.textContent = 'Parsing PDF…';
+  try {
+    progress.textContent = 'Parsing PDF…';
 
-  // 2. Parse PDF in browser using PDF.js, send chunks to edge function
-  const arrayBuffer = await file.arrayBuffer();
-  const loadingTask  = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdfDoc       = await loadingTask.promise;
+    // 2. Parse PDF in browser using PDF.js, send chunks to edge function
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask  = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdfDoc       = await loadingTask.promise;
 
-  const chunks = [];
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page    = await pdfDoc.getPage(i);
-    const content = await page.getTextContent();
-    const text    = content.items.map(item => item.str).join(' ').trim().slice(0, 2000);
-    if (text) chunks.push({ page_num: i, content: text });
-  }
-
-  progress.textContent = `Indexing ${chunks.length} pages…`;
-
-  // 3. Send chunks to edge function
-  const { data: { session } } = await db.auth.getSession();
-  const res = await fetch(
-    'https://rlqeswhukjwfcaokkonj.supabase.co/functions/v1/index-document',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
-      },
-      body: JSON.stringify({ project_id: projectId, filename: file.name, chunks })
+    const chunks = [];
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page    = await pdfDoc.getPage(i);
+      const content = await page.getTextContent();
+      const text    = content.items.map(item => item.str).join(' ').trim().slice(0, 2000);
+      if (text) chunks.push({ page_num: i, content: text });
     }
-  );
 
-  if (!res.ok) {
-    const err = await res.text();
-    progress.textContent = '❌ Indexing failed: ' + err;
-    return;
+    progress.textContent = `Indexing ${chunks.length} pages…`;
+
+    // 3. Send chunks to edge function
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) { progress.textContent = '❌ Session expired — please reload.'; return; }
+    const res = await fetch(
+      'https://rlqeswhukjwfcaokkonj.supabase.co/functions/v1/index-document',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ project_id: projectId, filename: file.name, chunks })
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      progress.textContent = '❌ Indexing failed: ' + err;
+      return;
+    }
+
+    progress.textContent = `✅ Indexed ${chunks.length} chunks`;
+    e.target.value = '';
+    await loadRagDocs(projectId);
+  } catch (err) {
+    progress.textContent = '❌ Error: ' + err.message;
   }
-
-  progress.textContent = `✅ Indexed ${chunks.length} chunks`;
-  e.target.value = '';
-  await loadRagDocs(projectId);
 }
 
 function esc(str) {
@@ -409,7 +408,8 @@ function esc(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 init();
