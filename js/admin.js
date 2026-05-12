@@ -248,9 +248,27 @@ function renderRagDocList(chunks) {
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:8px 12px;background:var(--dark);border-radius:6px;margin-bottom:6px;font-size:13px">
       <span>📄 ${esc(file)}</span>
-      <span class="text-muted">${pages} chunks</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="text-muted">${pages} chunks</span>
+        <button onclick="renameRagDoc('${esc(file)}')"
+                style="background:none;border:1px solid var(--border);color:var(--muted);
+                       padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">Rename</button>
+      </div>
     </div>`).join('');
 }
+
+window.renameRagDoc = async function(oldName) {
+  const newName = prompt(`Rename "${oldName}" to:`, oldName.replace(/\.pdf$/i, ''));
+  if (!newName || newName.trim() === oldName.replace(/\.pdf$/i, '')) return;
+  const finalName = newName.trim().endsWith('.pdf') ? newName.trim() : newName.trim() + '.pdf';
+  const projectId = document.getElementById('pdf-upload-area').dataset.projectId;
+  const { error } = await db.from('document_chunks')
+    .update({ filename: finalName })
+    .eq('project_id', projectId)
+    .eq('filename', oldName);
+  if (error) { alert('Rename failed: ' + error.message); return; }
+  await loadRagDocs(projectId);
+};
 
 // ── Save project ──────────────────────────────────────────────
 
