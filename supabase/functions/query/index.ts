@@ -115,24 +115,28 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Build context
+  // Build context — strip [DocTitle] prefix from content (used for embedding, confuses LLM)
   const context = chunks
-    .map((c: { filename: string; page_num: number; content: string }) =>
-      `[${c.filename} — Page ${c.page_num}]\n${c.content}`)
+    .map((c: { filename: string; page_num: number; content: string }) => {
+      const clean = c.content.replace(/^\[[^\]]+\]\s*/, '');
+      return `[${c.filename} — Page ${c.page_num}]\n${clean}`;
+    })
     .join('\n\n');
 
-  // Call Cerebras
-  const llmRes = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+  // Call Claude Haiku — follows citation format precisely, better document reasoning
+  const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
+  const llmRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${CEREBRAS_API_KEY}`,
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-oss-120b',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
+      system: SYSTEM_PROMPT,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: `Documents:\n${context}\n\nQuestion: ${query}` },
       ],
     }),
@@ -145,10 +149,10 @@ Deno.serve(async (req) => {
   }
 
   const llmData = await llmRes.json();
-  const answer  = llmData.choices[0].message.content;
+  const answer  = llmData.content[0].text;
 
   return new Response(
-    JSON.stringify({ answer, provider: 'cerebras', model: 'gpt-oss-120b' }),
+    JSON.stringify({ answer, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' }),
     { headers: { ...CORS, 'Content-Type': 'application/json' } }
   );
 });
