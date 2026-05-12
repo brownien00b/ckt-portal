@@ -244,7 +244,16 @@ function renderRagDocList(chunks) {
   chunks.forEach(c => {
     byFile[c.filename] = (byFile[c.filename] || 0) + 1;
   });
-  el.innerHTML = Object.entries(byFile).map(([file, pages]) => `
+  const projectId = document.getElementById('pdf-upload-area').dataset.projectId;
+  el.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button onclick="reindexAll()" id="reindex-btn"
+              style="background:none;border:1px solid var(--gold);color:var(--gold);
+                     padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px">
+        ↺ Re-index All
+      </button>
+    </div>` +
+  Object.entries(byFile).map(([file, pages]) => `
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:8px 12px;background:var(--dark);border-radius:6px;margin-bottom:6px;font-size:13px">
       <span>📄 ${esc(file)}</span>
@@ -259,6 +268,83 @@ function renderRagDocList(chunks) {
       </div>
     </div>`).join('');
 }
+
+window.reindexAll = async function() {
+  const projectId = document.getElementById('pdf-upload-area').dataset.projectId;
+  if (!projectId) return;
+  if (!confirm('Re-index all PDFs for this project? This rewrites all search chunks.')) return;
+
+  const progress = document.getElementById('upload-progress');
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { alert('Session expired — please reload.'); return; }
+
+  progress.classList.remove('hidden');
+  const btn = document.getElementById('reindex-btn');
+  if (btn) btn.disabled = true;
+
+  // List all PDFs in storage for this project
+  const { data: files, error: listErr } = await db.storage
+    .from('project-documents').list(projectId);
+  if (listErr || !files?.length) {
+    progress.textContent = '❌ Could not list files: ' + (listErr?.message || 'no files found');
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  const pdfs = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  let done = 0;
+  for (const file of pdfs) {
+    const filename = file.name;
+    progress.textContent = `[${++done}/${pdfs.length}] Downloading ${filename}…`;
+
+    // Download PDF from storage
+    const { data: blob, error: dlErr } = await db.storage
+      .from('project-documents').download(`${projectId}/${filename}`);
+    if (dlErr) { progress.textContent = `❌ Download failed (${filename}): ` + dlErr.message; continue; }
+
+    // Parse PDF
+    const arrayBuffer = await blob.arrayBuffer();
+    let pdfDoc;
+    try {
+      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    } catch (e) {
+      progress.textContent = `❌ Parse failed (${filename}): ` + e.message;
+      continue;
+    }
+
+    // Extract text chunks, prefixing each with the filename so product names match queries
+    progress.textContent = `[${done}/${pdfs.length}] Extracting ${pdfDoc.numPages} pages from ${filename}…`;
+    const docTitle = filename.replace(/\.pdf$/i, '');
+    const chunks = [];
+    for (let p = 1; p <= pdfDoc.numPages; p++) {
+      const page    = await pdfDoc.getPage(p);
+      const content = await page.getTextContent();
+      const text    = content.items.map(i => i.str).join(' ').trim().slice(0, 1900);
+      // Prepend doc title so product name is always in the embedding
+      chunks.push({ page_num: p, content: `[${docTitle}] ${text || '(no text)'}` });
+    }
+
+    // Re-index via edge function
+    progress.textContent = `[${done}/${pdfs.length}] Indexing ${chunks.length} chunks for ${filename}…`;
+    const res = await fetch(
+      'https://sgtryrxsgbilbprrqtxw.supabase.co/functions/v1/index-document',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ project_id: projectId, filename, chunks }),
+      }
+    );
+    if (!res.ok) {
+      const err = await res.text();
+      progress.textContent = `❌ Index failed (${filename}): ` + err;
+      continue;
+    }
+  }
+
+  progress.textContent = `✅ Re-indexed ${pdfs.length} file${pdfs.length !== 1 ? 's' : ''}`;
+  if (btn) btn.disabled = false;
+  await loadRagDocs(projectId);
+};
 
 window.renameRagDoc = async function(oldName) {
   const newName = prompt(`Rename "${oldName}" to:`, oldName.replace(/\.pdf$/i, ''));
