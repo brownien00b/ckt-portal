@@ -61,9 +61,7 @@ body {
 }
 .project-page .site-header { flex-shrink: 0; }
 .project-page .site-footer {
-  flex-shrink: 0;
-  margin-top: 0 !important;
-  padding: 8px 24px;
+  display: none;
 }
 /* Override the centered max-width layout entirely */
 .project-page .page-content {
@@ -108,9 +106,137 @@ body {
   flex: 1;
   min-width: 0;
 }
+/* ── Project notes bar ───────────────────────────────────────── */
+.project-notes-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(204,164,82,0.07);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 6px 6px 0;
+  padding: 8px 14px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  min-height: 38px;
+}
+.project-notes-body { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.project-notes-icon { font-size: 14px; flex-shrink: 0; }
+.project-notes-text { font-size: 13px; color: var(--text); line-height: 1.4; }
+.btn-notes-edit {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: .15s;
+}
+.btn-notes-edit:hover { border-color: var(--gold); color: var(--gold); }
+.notes-edit-textarea {
+  flex: 1;
+  background: var(--input-bg, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 10px;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+.notes-edit-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ── Milestone editable ──────────────────────────────────────── */
+.milestone-step.editable { cursor: pointer; }
+.milestone-step.editable:hover .milestone-dot { border-color: var(--gold); color: var(--gold); }
+.milestone-date {
+  font-size: 10px;
+  color: var(--gold);
+  margin-top: 3px;
+  text-align: center;
+}
+.milestone-note-text {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 1px;
+  text-align: center;
+  max-width: 80px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.milestone-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.milestone-modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.milestone-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.milestone-modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+/* ── Q&A History ─────────────────────────────────────────────── */
+.rag-history {
+  display: none;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  max-height: 240px;
+}
+.rag-history.has-items { display: flex; }
+.rag-history-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.rag-history-header:hover { color: var(--text); }
+.rag-history-chevron { margin-left: auto; transition: transform .2s; }
+.rag-history.open .rag-history-chevron { transform: rotate(180deg); }
+.rag-history-list { display: none; overflow-y: auto; flex: 1; }
+.rag-history.open .rag-history-list { display: block; }
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  transition: background .12s;
+}
+.history-item:hover { background: rgba(255,255,255,.04); }
+.history-item-q { font-size: 12px; color: var(--text); flex: 1; min-width: 0; }
+.history-item-ts { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+
 .project-page .project-lower {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   margin-top: 12px;
   padding: 0;
   /* override the 100vw breakout — no longer needed */
@@ -230,6 +356,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 12px;
 }
 .doc-card {
   display: flex;

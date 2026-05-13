@@ -4,7 +4,8 @@ async function init() {
   const session = await requireAuth();
   if (!session) return;
 
-  if (session.user.email === ADMIN_EMAIL) {
+  _isAdmin = session.user.email === ADMIN_EMAIL;
+  if (_isAdmin) {
     document.getElementById('admin-nav').style.removeProperty('display');
   }
 
@@ -31,6 +32,9 @@ async function init() {
 
   const ragFilenames = [...new Set((chunks || []).map(c => c.filename))].sort();
 
+  _milestoneData = project.milestone_data || {};
+  _projectNotes  = project.notes || '';
+
   document.title = `${project.name} — CKT Group`;
   document.getElementById('project-number').textContent = project.project_number;
   renderProject(project, ragFilenames);
@@ -54,6 +58,31 @@ function renderProject(project, ragFilenames = []) {
       </div>
       <div class="milestone-tracker" id="milestone-tracker"></div>
     </div>
+
+    ${(_projectNotes || _isAdmin) ? `
+    <div class="project-notes-bar" id="project-notes-bar">
+      <div class="project-notes-body">
+        ${_projectNotes
+          ? `<span class="project-notes-icon">📋</span><span class="project-notes-text">${escHtml(_projectNotes)}</span>`
+          : `<span class="project-notes-text text-muted">No status note yet.</span>`}
+      </div>
+      ${_isAdmin ? `<button class="btn-notes-edit" onclick="editNotes()">Edit</button>` : ''}
+    </div>` : ''}
+
+    ${_isAdmin ? `
+    <div id="milestone-modal" class="milestone-modal" style="display:none" onclick="if(event.target===this)closeMilestoneEdit()">
+      <div class="milestone-modal-box">
+        <div class="milestone-modal-title" id="milestone-modal-title">Edit Milestone</div>
+        <label class="form-label">Date</label>
+        <input type="date" id="milestone-modal-date" class="form-input">
+        <label class="form-label" style="margin-top:8px">Note</label>
+        <input type="text" id="milestone-modal-note" class="form-input" placeholder="Optional note…" maxlength="120">
+        <div class="milestone-modal-actions">
+          <button class="btn btn-primary" style="font-size:13px;padding:7px 16px" onclick="saveMilestoneStep()">Save</button>
+          <button class="btn" style="font-size:13px;padding:7px 16px" onclick="closeMilestoneEdit()">Cancel</button>
+        </div>
+      </div>
+    </div>` : ''}
 
     <div class="project-lower" id="project-lower">
       <div class="documents-section" id="docs-sidebar">
@@ -92,11 +121,18 @@ function renderMilestones(labels, current) {
     const step = i + 1;
     const cls  = step < current ? 'done' : step === current ? 'active' : 'pending';
     const dot  = step < current ? '✓' : String(step);
+    const md   = _milestoneData[i] || {};
+    const dateLine = md.date
+      ? `<div class="milestone-date">${escHtml(md.date)}</div>` : '';
+    const noteLine = md.note
+      ? `<div class="milestone-note-text">${escHtml(md.note)}</div>` : '';
+    const clickAttr = _isAdmin ? `onclick="openMilestoneEdit(${i})" title="Edit milestone"` : '';
     return `
       ${i > 0 ? `<div class="milestone-connector ${step <= current ? 'done' : ''}"></div>` : ''}
-      <div class="milestone-step ${cls}">
+      <div class="milestone-step ${cls}${_isAdmin ? ' editable' : ''}" ${clickAttr}>
         <div class="milestone-dot">${dot}</div>
         <div class="milestone-label">${escHtml(label)}</div>
+        ${dateLine}${noteLine}
       </div>
     `;
   });
@@ -142,7 +178,12 @@ async function renderDocuments(docs, ragFilenames, projectId) {
 
 // ── RAG Section ───────────────────────────────────────────────
 
-let _projectDbId = null; // set when project renders
+let _projectDbId = null;
+let _isAdmin = false;
+let _milestoneData = {};
+let _milestoneEditIdx = -1;
+let _projectNotes = '';
+let _historyItems = [];
 let pdfDoc = null, totalPages = 0, currentFile = null;
 let userZoom = 1.0;
 let pageTextContent = {}, pageTextDivs = {};
@@ -165,6 +206,12 @@ function mountRag(projectId) {
             </div>
           </div>
           <div class="rag-answer-area" id="rag-answer"></div>
+          <div class="rag-history" id="rag-history">
+            <div class="rag-history-header" onclick="toggleHistory()">
+              Past Questions <span id="rag-history-count"></span><span class="rag-history-chevron">▾</span>
+            </div>
+            <div class="rag-history-list" id="rag-history-list"></div>
+          </div>
         </div>
         <div class="resize-handle" id="rag-resize"></div>
         <div class="pdf-panel" id="pdf-panel">
@@ -201,6 +248,7 @@ function mountRag(projectId) {
 
   initResizeHandle();
   initPdfPan();
+  loadHistory(projectId);
 
   document.getElementById('rag-query').addEventListener('keydown', e => {
     if (e.key === 'Enter') ragSubmit();
@@ -245,6 +293,14 @@ window.ragSubmit = async function() {
       return;
     }
     renderAnswer(data.answer);
+    // Save to history
+    const item = { question: q, answer: data.answer, created_at: new Date().toISOString() };
+    db.from('project_conversations').insert({
+      project_id: _projectDbId,
+      user_id: session.user.id,
+      question: q,
+      answer: data.answer,
+    }).then(({ error: he }) => { if (!he) prependHistory(item); });
   } catch (e) {
     document.getElementById('rag-submit').disabled = false;
     area.innerHTML = '<div class="error-msg">Request failed.</div>';
@@ -581,6 +637,128 @@ function initPdfPan() {
     if (e.ctrlKey || e.metaKey) { e.preventDefault(); window.changeZoom(e.deltaY < 0 ? 0.15 : -0.15); }
   }, { passive: false });
 }
+
+// ── Project notes ─────────────────────────────────────────────
+
+window.editNotes = function() {
+  const bar = document.getElementById('project-notes-bar');
+  if (!bar) return;
+  bar.innerHTML = `
+    <textarea class="notes-edit-textarea" id="notes-edit-input"
+      placeholder="Add a status update for the client…" maxlength="500">${escHtml(_projectNotes)}</textarea>
+    <div class="notes-edit-actions">
+      <button class="btn btn-primary" style="font-size:13px;padding:7px 16px" onclick="saveNotes()">Save</button>
+      <button class="btn" style="font-size:13px;padding:7px 16px" onclick="cancelNotes()">Cancel</button>
+    </div>`;
+  document.getElementById('notes-edit-input').focus();
+};
+
+window.saveNotes = async function() {
+  const val = document.getElementById('notes-edit-input').value.trim();
+  const { error } = await db.from('projects').update({ notes: val || null }).eq('id', _projectDbId);
+  if (error) { alert('Save failed: ' + error.message); return; }
+  _projectNotes = val;
+  renderNotesBar();
+};
+
+window.cancelNotes = function() { renderNotesBar(); };
+
+function renderNotesBar() {
+  const bar = document.getElementById('project-notes-bar');
+  if (!bar) return;
+  bar.innerHTML = `
+    <div class="project-notes-body">
+      ${_projectNotes
+        ? `<span class="project-notes-icon">📋</span><span class="project-notes-text">${escHtml(_projectNotes)}</span>`
+        : `<span class="project-notes-text text-muted">No status note yet.</span>`}
+    </div>
+    <button class="btn-notes-edit" onclick="editNotes()">Edit</button>`;
+}
+
+// ── Milestone editing ──────────────────────────────────────────
+
+window.openMilestoneEdit = function(idx) {
+  _milestoneEditIdx = idx;
+  const labels = document.querySelectorAll('.milestone-step');
+  const label  = labels[idx]?.querySelector('.milestone-label')?.textContent || `Milestone ${idx + 1}`;
+  const md     = _milestoneData[idx] || {};
+  document.getElementById('milestone-modal-title').textContent = `Edit: ${label}`;
+  document.getElementById('milestone-modal-date').value = md.date || '';
+  document.getElementById('milestone-modal-note').value = md.note || '';
+  document.getElementById('milestone-modal').style.display = 'flex';
+  document.getElementById('milestone-modal-date').focus();
+};
+
+window.closeMilestoneEdit = function() {
+  document.getElementById('milestone-modal').style.display = 'none';
+  _milestoneEditIdx = -1;
+};
+
+window.saveMilestoneStep = async function() {
+  if (_milestoneEditIdx < 0) return;
+  const date = document.getElementById('milestone-modal-date').value;
+  const note = document.getElementById('milestone-modal-note').value.trim();
+  _milestoneData[_milestoneEditIdx] = date || note ? { date, note } : undefined;
+  if (!_milestoneData[_milestoneEditIdx]) delete _milestoneData[_milestoneEditIdx];
+  const { error } = await db.from('projects')
+    .update({ milestone_data: _milestoneData })
+    .eq('id', _projectDbId);
+  if (error) { alert('Save failed: ' + error.message); return; }
+  closeMilestoneEdit();
+  const { data: project } = await db.from('projects')
+    .select('milestone_labels, current_milestone')
+    .eq('id', _projectDbId).single();
+  if (project) renderMilestones(project.milestone_labels, project.current_milestone);
+};
+
+// ── Q&A History ───────────────────────────────────────────────
+
+window.toggleHistory = function() {
+  document.getElementById('rag-history').classList.toggle('open');
+};
+
+async function loadHistory(projectId) {
+  const { data } = await db
+    .from('project_conversations')
+    .select('id, question, answer, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (!data || !data.length) return;
+  _historyItems = data;
+  renderHistoryList();
+  document.getElementById('rag-history').classList.add('has-items');
+}
+
+function prependHistory(item) {
+  _historyItems.unshift(item);
+  renderHistoryList();
+  document.getElementById('rag-history').classList.add('has-items', 'open');
+}
+
+function renderHistoryList() {
+  const listEl  = document.getElementById('rag-history-list');
+  const countEl = document.getElementById('rag-history-count');
+  if (!listEl) return;
+  if (countEl) countEl.textContent = _historyItems.length ? `(${_historyItems.length})` : '';
+  listEl.innerHTML = _historyItems.map((item, idx) => {
+    const d   = new Date(item.created_at);
+    const ts  = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric',
+                  hour: 'numeric', minute: '2-digit' });
+    const q   = item.question.length > 90 ? item.question.slice(0, 90) + '…' : item.question;
+    return `<div class="history-item" onclick="restoreHistoryItem(${idx})">
+      <div class="history-item-q">${escHtml(q)}</div>
+      <div class="history-item-ts">${escHtml(ts)}</div>
+    </div>`;
+  }).join('');
+}
+
+window.restoreHistoryItem = function(idx) {
+  const item = _historyItems[idx];
+  if (!item) return;
+  document.getElementById('rag-query').value = item.question;
+  renderAnswer(item.answer);
+};
 
 function showError(msg) {
   document.getElementById('project-content').innerHTML =
