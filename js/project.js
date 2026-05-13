@@ -87,11 +87,31 @@ function renderProject(project, ragFilenames = []) {
     <div class="project-lower" id="project-lower">
       <div class="documents-section" id="docs-sidebar">
         <div class="sidebar-header">
-          <span class="section-title" style="margin:0;border:none;padding:0">Documents</span>
+          <span class="sidebar-brand">Project Files</span>
           <button class="btn-sidebar-toggle" id="sidebar-toggle"
-                  onclick="toggleDocsSidebar()" title="Hide sidebar">☰</button>
+                  onclick="toggleDocsSidebar()" title="Hide sidebar">✕</button>
         </div>
-        <div class="documents-grid" id="documents-grid"></div>
+
+        <div class="sidebar-section open" id="section-docs">
+          <div class="sidebar-section-header" onclick="toggleSidebarSection('section-docs')">
+            <span class="sidebar-section-label">Documents</span>
+            <span class="sidebar-section-chevron">▾</span>
+          </div>
+          <div class="sidebar-section-body">
+            <div class="documents-grid" id="documents-grid"></div>
+          </div>
+        </div>
+
+        <div class="sidebar-section" id="section-history" style="display:none">
+          <div class="sidebar-section-header" onclick="toggleSidebarSection('section-history')">
+            <span class="sidebar-section-label">Past Questions</span>
+            <span class="sidebar-history-count" id="sidebar-history-count"></span>
+            <span class="sidebar-section-chevron">▾</span>
+          </div>
+          <div class="sidebar-section-body">
+            <div id="rag-history-list"></div>
+          </div>
+        </div>
       </div>
       <div id="rag-mount" class="rag-mount-col"></div>
     </div>
@@ -109,6 +129,10 @@ window.toggleDocsSidebar = function() {
   const collapsed = sidebar.classList.toggle('collapsed');
   btn.textContent = collapsed ? '☰' : '✕';
   btn.title       = collapsed ? 'Show sidebar' : 'Hide sidebar';
+};
+
+window.toggleSidebarSection = function(id) {
+  document.getElementById(id)?.classList.toggle('open');
 };
 
 function renderMilestones(labels, current) {
@@ -206,12 +230,6 @@ function mountRag(projectId) {
             </div>
           </div>
           <div class="rag-answer-area" id="rag-answer"></div>
-          <div class="rag-history" id="rag-history">
-            <div class="rag-history-header" onclick="toggleHistory()">
-              Past Questions <span id="rag-history-count"></span><span class="rag-history-chevron">▾</span>
-            </div>
-            <div class="rag-history-list" id="rag-history-list"></div>
-          </div>
         </div>
         <div class="resize-handle" id="rag-resize"></div>
         <div class="pdf-panel" id="pdf-panel">
@@ -713,9 +731,6 @@ window.saveMilestoneStep = async function() {
 
 // ── Q&A History ───────────────────────────────────────────────
 
-window.toggleHistory = function() {
-  document.getElementById('rag-history').classList.toggle('open');
-};
 
 async function loadHistory(projectId) {
   const { data } = await db
@@ -727,18 +742,18 @@ async function loadHistory(projectId) {
   if (!data || !data.length) return;
   _historyItems = data;
   renderHistoryList();
-  document.getElementById('rag-history').classList.add('has-items');
+  showHistorySection();
 }
 
 function prependHistory(item) {
   _historyItems.unshift(item);
   renderHistoryList();
-  document.getElementById('rag-history').classList.add('has-items', 'open');
+  showHistorySection();
 }
 
 function renderHistoryList() {
   const listEl  = document.getElementById('rag-history-list');
-  const countEl = document.getElementById('rag-history-count');
+  const countEl = document.getElementById('sidebar-history-count');
   if (!listEl) return;
   if (countEl) countEl.textContent = _historyItems.length ? `(${_historyItems.length})` : '';
   listEl.innerHTML = _historyItems.map((item, idx) => {
@@ -751,6 +766,13 @@ function renderHistoryList() {
       <div class="history-item-ts">${escHtml(ts)}</div>
     </div>`;
   }).join('');
+}
+
+function showHistorySection() {
+  const sec = document.getElementById('section-history');
+  if (!sec) return;
+  sec.style.display = '';
+  sec.classList.add('open');
 }
 
 window.restoreHistoryItem = function(idx) {
