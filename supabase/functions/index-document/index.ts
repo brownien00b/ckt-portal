@@ -22,7 +22,13 @@ Deno.serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user || user.email !== 'arpanmajmundar@gmail.com') {
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+  // Data-driven admin check (admins table via is_admin RPC) — not a hardcoded email
+  const { data: isAdmin, error: adminError } = await userClient.rpc('is_admin');
+  if (adminError || isAdmin !== true) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }),
       { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }

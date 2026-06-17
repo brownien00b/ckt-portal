@@ -1,8 +1,21 @@
-import { db, requireAdmin } from '/js/supabase-client.js';
+import { db, requireAuth, isAdmin } from '/js/supabase-client.js';
 
 async function init() {
-  const session = await requireAdmin();
+  // Any signed-in user may land here. RLS scopes the project list:
+  // admins get every project, clients get only the ones their email is on.
+  const session = await requireAuth();
   if (!session) return;
+
+  const admin = await isAdmin();
+
+  // Show admin-only chrome only to admins; clients get a read-only view.
+  if (admin) {
+    const adminLink = document.getElementById('admin-link');
+    if (adminLink) adminLink.style.display = '';
+  } else {
+    const heading = document.getElementById('projects-heading');
+    if (heading) heading.textContent = 'Your Projects';
+  }
 
   document.getElementById('signout-btn').addEventListener('click', async () => {
     await db.auth.signOut({ scope: 'local' });
@@ -17,7 +30,9 @@ async function init() {
   const listEl = document.getElementById('project-list');
 
   if (error || !projects || !projects.length) {
-    listEl.innerHTML = '<p class="text-muted">No projects yet. <a href="/admin.html" class="text-gold">Add one in Admin →</a></p>';
+    listEl.innerHTML = admin
+      ? '<p class="text-muted">No projects yet. <a href="/admin.html" class="text-gold">Add one in Admin →</a></p>'
+      : '<p class="text-muted">No projects are shared with your account yet. Please contact CKT Group if you were expecting access.</p>';
     return;
   }
 
@@ -39,9 +54,9 @@ async function init() {
         <div class="project-row-actions">
           <a href="/project.html?id=${encodeURIComponent(p.project_number)}"
              class="btn btn-secondary" style="font-size:12px;padding:6px 12px"
-             target="_blank" rel="noopener noreferrer">View</a>
-          <a href="/admin.html?edit=${encodeURIComponent(p.project_number)}"
-             class="btn btn-secondary" style="font-size:12px;padding:6px 12px">Edit</a>
+             ${admin ? 'target="_blank" rel="noopener noreferrer"' : ''}>${admin ? 'View' : 'Open'}</a>
+          ${admin ? `<a href="/admin.html?edit=${encodeURIComponent(p.project_number)}"
+             class="btn btn-secondary" style="font-size:12px;padding:6px 12px">Edit</a>` : ''}
         </div>
       </div>`;
   }).join('')}</div>`;

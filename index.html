@@ -10,7 +10,7 @@
 <header class="site-header">
   <span class="brand">CKT Group LLC</span>
   <div class="flex gap-8">
-    <a href="/admin.html" class="btn btn-secondary" style="font-size:13px;padding:7px 14px">Admin</a>
+    <a href="/admin.html" id="admin-link" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;display:none">Admin</a>
     <button class="btn btn-secondary" id="signout-btn"
             style="font-size:13px;padding:7px 14px">Sign Out</button>
   </div>
@@ -18,7 +18,7 @@
 
 <div class="page-content">
   <div class="flex-between" style="margin-bottom:28px">
-    <h1 style="font-size:22px">All Projects</h1>
+    <h1 id="projects-heading" style="font-size:22px">All Projects</h1>
   </div>
   <div id="project-list">
     <div class="rag-status"><div class="spinner"></div> Loading…</div>

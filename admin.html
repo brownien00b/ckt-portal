@@ -75,23 +75,18 @@
     <div id="milestone-list"></div>
     <button class="btn-add" onclick="addMilestone()">+ Add Milestone</button>
 
-    <!-- Section: Documents -->
-    <div class="section-title" style="margin:24px 0 12px">Documents</div>
-    <div id="document-list"></div>
-    <button class="btn-add" onclick="addDocument()">+ Add Document</button>
-
-    <!-- Section: Authorized Emails -->
-    <div class="section-title" style="margin:24px 0 12px">Authorized Client Emails</div>
+    <!-- Section: Files & Links (Drive links shown to the client) -->
+    <div class="section-title" style="margin:24px 0 6px">🔗 Files &amp; Links</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      Only these email addresses can view this project after OTP login.
+      Links shown on the client's project page — they open in a new tab (e.g. Google Drive). Leave the URL blank to show "Coming Soon." These are <strong>not searchable</strong>.
     </p>
-    <div id="email-list"></div>
-    <button class="btn-add" onclick="addEmail()">+ Add Email</button>
+    <div id="document-list"></div>
+    <button class="btn-add" onclick="addDocument()">+ Add File / Link</button>
 
-    <!-- Section: RAG Documents -->
-    <div class="section-title" style="margin:24px 0 12px">RAG Documents (PDF)</div>
+    <!-- Section: Searchable Documents (RAG-indexed PDFs) -->
+    <div class="section-title" style="margin:24px 0 6px">📄 Searchable Documents (PDF)</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      Upload PDFs to enable natural-language search on this project's documents.
+      Upload PDFs the client can read in-portal <strong>and the AI can answer questions from</strong> (indexed for Document Search). Not shown as plain download links.
     </p>
     <div id="rag-doc-list" style="margin-bottom:10px"></div>
     <div id="pdf-upload-area" class="hidden">
@@ -100,6 +95,14 @@
       <input type="file" id="pdf-file-input" accept=".pdf" multiple class="form-input" style="padding:6px">
       <div id="upload-progress" class="hidden" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
     </div>
+
+    <!-- Section: Authorized Emails -->
+    <div class="section-title" style="margin:24px 0 12px">Authorized Client Emails</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Only these email addresses can view this project after OTP login.
+    </p>
+    <div id="email-list"></div>
+    <button class="btn-add" onclick="addEmail()">+ Add Email</button>
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:28px">
       <div>

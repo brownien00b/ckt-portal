@@ -9,6 +9,11 @@ async function init() {
     document.getElementById('admin-nav').style.removeProperty('display');
   }
 
+  document.getElementById('signout-btn')?.addEventListener('click', async () => {
+    await db.auth.signOut({ scope: 'local' });
+    window.location.href = '/login.html';
+  });
+
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get('id');
   if (!projectId) { showError('No project ID specified in URL.'); return; }
@@ -31,6 +36,7 @@ async function init() {
     .eq('project_id', project.id);
 
   const ragFilenames = [...new Set((chunks || []).map(c => c.filename))].sort();
+  _ragFilenames = ragFilenames;
 
   _milestoneData = project.milestone_data || {};
   _projectNotes  = project.notes || '';
@@ -92,13 +98,25 @@ function renderProject(project, ragFilenames = []) {
                   onclick="toggleDocsSidebar()" title="Hide sidebar">✕</button>
         </div>
 
-        <div class="sidebar-section open" id="section-docs">
-          <div class="sidebar-section-header" onclick="toggleSidebarSection('section-docs')">
-            <span class="sidebar-section-label">Documents</span>
+        <div class="sidebar-section open" id="section-searchable">
+          <div class="sidebar-section-header" onclick="toggleSidebarSection('section-searchable')">
+            <span class="sidebar-section-label">📄 Searchable Documents</span>
             <span class="sidebar-section-chevron">▾</span>
           </div>
           <div class="sidebar-section-body">
-            <div class="documents-grid" id="documents-grid"></div>
+            <p style="font-size:12px;color:var(--muted);margin:0 2px 8px;line-height:1.45">Read them here, or ask about them in Document Search →</p>
+            <div class="documents-grid" id="searchable-grid"></div>
+          </div>
+        </div>
+
+        <div class="sidebar-section open" id="section-files">
+          <div class="sidebar-section-header" onclick="toggleSidebarSection('section-files')">
+            <span class="sidebar-section-label">🔗 Files &amp; Links</span>
+            <span class="sidebar-section-chevron">▾</span>
+          </div>
+          <div class="sidebar-section-body">
+            <p style="font-size:12px;color:var(--muted);margin:0 2px 8px;line-height:1.45">Deliverables — open in a new tab.</p>
+            <div class="documents-grid" id="files-grid"></div>
           </div>
         </div>
 
@@ -164,9 +182,10 @@ function renderMilestones(labels, current) {
 }
 
 async function renderDocuments(docs, ragFilenames, projectId) {
-  const el = document.getElementById('documents-grid');
+  const searchableEl = document.getElementById('searchable-grid');
+  const filesEl      = document.getElementById('files-grid');
 
-  // Build RAG PDF cards — clickable to open inline PDF viewer
+  // Searchable PDFs — indexed for AI search; click opens the built-in viewer
   const ragCards = ragFilenames.map(filename => {
     const label    = filename.replace(/\.pdf$/i, '');
     const safeName = escHtml(filename);
@@ -175,8 +194,13 @@ async function renderDocuments(docs, ragFilenames, projectId) {
                <span class="doc-label">${escHtml(label)}</span>
              </div>`;
   });
+  if (searchableEl) {
+    searchableEl.innerHTML = ragCards.length
+      ? ragCards.join('')
+      : '<p class="text-muted" style="font-size:13px;padding:2px">No searchable documents yet.</p>';
+  }
 
-  // Drive URL doc cards
+  // Drive URL cards — external deliverables, open in a new tab
   const sorted = [...(docs || [])].sort((a, b) => a.display_order - b.display_order);
   const driveCards = sorted.map(doc => {
     if (doc.drive_url && isSafeUrl(doc.drive_url)) {
@@ -195,15 +219,18 @@ async function renderDocuments(docs, ragFilenames, projectId) {
         <span class="coming-soon-label">Coming Soon</span>
       </div>`;
   });
-
-  const all = [...ragCards.filter(Boolean), ...driveCards];
-  el.innerHTML = all.length ? all.join('') : '<p class="text-muted">No documents added yet.</p>';
+  if (filesEl) {
+    filesEl.innerHTML = driveCards.length
+      ? driveCards.join('')
+      : '<p class="text-muted" style="font-size:13px;padding:2px">No files or links yet.</p>';
+  }
 }
 
 // ── RAG Section ───────────────────────────────────────────────
 
 let _projectDbId = null;
 let _isAdmin = false;
+let _ragFilenames = [];
 let _milestoneData = {};
 let _milestoneEditIdx = -1;
 let _projectNotes = '';
@@ -227,6 +254,8 @@ function mountRag(projectId) {
                      placeholder="Ask anything about this project's documents…">
               <button class="btn btn-primary" id="rag-submit" onclick="ragSubmit()"
                       style="padding:10px 18px;font-size:14px">Ask</button>
+              <button class="btn btn-secondary" id="rag-clear" onclick="clearRag()"
+                      style="padding:10px 14px;font-size:14px">Clear</button>
             </div>
           </div>
           <div class="rag-answer-area" id="rag-answer"></div>
@@ -325,6 +354,14 @@ window.ragSubmit = async function() {
   }
 };
 
+// Clear the current search + the answer parked below it (Past Questions sidebar is untouched).
+window.clearRag = function() {
+  const q = document.getElementById('rag-query');
+  const a = document.getElementById('rag-answer');
+  if (a) a.innerHTML = '';
+  if (q) { q.value = ''; q.focus(); }
+};
+
 function renderAnswer(raw) {
   const sourcesIdx = raw.search(/\nSources:/i);
   const mainText   = sourcesIdx >= 0 ? raw.slice(0, sourcesIdx).trim() : raw.trim();
@@ -363,8 +400,23 @@ function renderAnswer(raw) {
 
 // ── PDF viewer ────────────────────────────────────────────────
 
+// The LLM sometimes abbreviates a filename in its citation (e.g. "3A3469EN-L"
+// vs the full stored name). Resolve the cited name to the real stored file.
+function resolveRagFilename(cited) {
+  const files = _ragFilenames || [];
+  if (!files.length) return cited;
+  const norm = s => String(s).toLowerCase().replace(/\.pdf$/i, '').trim();
+  const c = norm(cited);
+  return files.find(f => norm(f) === c)
+      || files.find(f => norm(f).startsWith(c))
+      || files.find(f => c.startsWith(norm(f)))
+      || files.find(f => norm(f).includes(c) || c.includes(norm(f)))
+      || cited;
+}
+
 window.openPdf = async function(filename, page) {
   page = parseInt(page) || 1;
+  filename = resolveRagFilename(filename);   // citations may abbreviate the name
   const panel      = document.getElementById('pdf-panel');
   const resizeH    = document.getElementById('rag-resize');
   const ragMain    = document.getElementById('rag-main');
