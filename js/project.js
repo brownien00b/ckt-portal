@@ -1,10 +1,10 @@
-import { db, requireAuth, ADMIN_EMAIL } from '/js/supabase-client.js';
+import { db, requireAuth, isAdmin } from '/js/supabase-client.js';
 
 async function init() {
   const session = await requireAuth();
   if (!session) return;
 
-  _isAdmin = session.user.email === ADMIN_EMAIL;
+  _isAdmin = await isAdmin();
   if (_isAdmin) {
     document.getElementById('admin-nav').style.removeProperty('display');
   }

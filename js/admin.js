@@ -499,6 +499,10 @@ async function uploadPdfs(e) {
         } catch { /* non-fatal */ }
       }
 
+      // Sanitize to a valid Supabase Storage key (ASCII only — no ™/®/accents/reserved chars)
+      const safeBase = safeStorageName(displayName.replace(/\.pdf$/i, '')).slice(0, 80) || 'document';
+      displayName = safeBase + '.pdf';
+
       // Step 2: Upload to storage
       progress.textContent = label(`Uploading "${displayName}"…`);
       const { error: storageError } = await db.storage
@@ -529,7 +533,7 @@ async function uploadPdfs(e) {
       try {
         const resData = await res.json();
         if (resData.suggested_name) {
-          const aiName = resData.suggested_name.trim().replace(/\.pdf$/i, '') + '.pdf';
+          const aiName = (safeStorageName(resData.suggested_name.trim().replace(/\.pdf$/i, '')).slice(0, 80) || 'document') + '.pdf';
           if (aiName !== displayName) {
             progress.textContent = label(`Naming → "${aiName}"…`);
             await db.from('document_chunks').update({ filename: aiName })
@@ -554,6 +558,17 @@ async function uploadPdfs(e) {
   nameInput.value = '';
   nameInput.disabled = false;
   await loadRagDocs(projectId);
+}
+
+// Supabase Storage object keys must be ASCII without reserved chars.
+// Strip non-ASCII (™ ® accents) and filesystem-reserved characters so the key is always valid.
+function safeStorageName(raw) {
+  return String(raw || '')
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/[<>:"/\\|?*\r\n]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function esc(str) {
