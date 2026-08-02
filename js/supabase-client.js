@@ -38,7 +38,7 @@ export async function requireAdmin() {
   if (!session) return null;
   if (!(await isAdmin())) {
     document.body.innerHTML =
-      '<div style="color:var(--text);padding:40px;font-family:Arial">Access denied. <button onclick="import(\'/js/supabase-client.js\').then(m=>m.db.auth.signOut()).then(()=>window.location.href=\'/login.html\')" style="margin-left:12px;padding:6px 14px;background:#CCA452;color:#071E33;border:none;border-radius:4px;cursor:pointer;font-weight:600">Sign Out</button></div>';
+      '<div style="color:var(--text);padding:40px;font-family:Arial">Access denied. <button onclick="import(\'/js/supabase-client.js\').then(m=>m.db.auth.signOut({scope:\'local\'})).then(()=>window.location.href=\'/login.html\')" style="margin-left:12px;padding:6px 14px;background:#CCA452;color:#071E33;border:none;border-radius:4px;cursor:pointer;font-weight:600">Sign Out</button></div>';
     return null;
   }
   return session;
