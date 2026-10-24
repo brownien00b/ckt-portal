@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   // Verify caller is authenticated and authorized for this project
   const userClient = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
+    Deno.env.get('SB_PUBLISHABLE_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error: authError } = await userClient.auth.getUser();
@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    Deno.env.get('SB_SECRET_KEY')!,
   );
 
   // Run vector search and keyword search in parallel
